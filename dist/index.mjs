@@ -41469,7 +41469,7 @@ var escape2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;",
 var quoteHash = (q) => createHash2("sha256").update(JSON.stringify(q)).digest("hex");
 async function startPortal({ api, store, service, port = 0 }) {
   const nonce = randomBytes2(32).toString("hex"), csrf = randomBytes2(32).toString("hex");
-  let base;
+  let base, cookieName;
   let loginEmail = "", loginNotice = "";
   const sendCooldowns = /* @__PURE__ */ new Map();
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
@@ -41488,10 +41488,10 @@ async function startPortal({ api, store, service, port = 0 }) {
       if (req.headers.host !== new URL(base).host) return send(403, "Forbidden host");
       const u = new URL(req.url, base), cookies = String(req.headers.cookie ?? "").split(";").map((s) => s.trim());
       if (req.method === "GET" && u.searchParams.get("session") === nonce) {
-        res.writeHead(303, { Location: u.pathname + (u.searchParams.has("purchase") ? `?purchase=${encodeURIComponent(u.searchParams.get("purchase"))}&method=${encodeURIComponent(u.searchParams.get("method") ?? "balance")}` : ""), "Set-Cookie": `mz_esim_session=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+        res.writeHead(303, { Location: u.pathname + (u.searchParams.has("purchase") ? `?purchase=${encodeURIComponent(u.searchParams.get("purchase"))}&method=${encodeURIComponent(u.searchParams.get("method") ?? "balance")}` : ""), "Set-Cookie": `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
         return res.end();
       }
-      if (!cookies.includes(`mz_esim_session=${nonce}`)) return send(403, shell("Open from Cursor", "<p>Use the account or approval link returned by your eSIM plugin.</p>"));
+      if (!cookies.includes(`${cookieName}=${nonce}`)) return send(403, shell("Open from Cursor", "<p>This page has no matching login session. Return to Cursor and ask it to connect your MZ MALL eSIM account, then open the new link it returns.</p>"));
       if (req.method === "GET" && u.pathname === "/") {
         let connected = "";
         if (store.get("account", "current")) {
@@ -41590,12 +41590,13 @@ async function startPortal({ api, store, service, port = 0 }) {
     server.listen(port, "127.0.0.1", resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  cookieName = `mz_esim_session_${server.address().port}`;
   return { server, base, accountUrl: () => `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.1.3" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.1.4" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();

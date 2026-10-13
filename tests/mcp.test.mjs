@@ -124,3 +124,36 @@ test('concurrent code-send submissions call the email API once and failed OTP en
   assert.equal(f.store.get('account', 'current'), null);
   assert.equal(f.state.count, 0); assert.equal(f.state.payCalls, 0);
 });
+
+test('two loopback portals retain separate browser sessions and reject each other\'s form token', async t => {
+  const a = fixture(), b = fixture();
+  const first = await startPortal({ api: a.api, store: a.store, service: a.service });
+  const second = await startPortal({ api: b.api, store: b.store, service: b.service });
+  t.after(async () => {
+    await Promise.all([first, second].map(p => new Promise(r => p.server.close(r))));
+    a.close(); b.close();
+  });
+  // Cookies are scoped to host/path, not port. Model the browser replacing a
+  // same-name cookie when another local portal opens on 127.0.0.1.
+  const jar = new Map();
+  const visit = async portal => {
+    const response = await fetch(portal.accountUrl(), { redirect: 'manual' });
+    const [name, value] = response.headers.get('set-cookie').split(';')[0].split('=');
+    jar.set(name, value);
+  };
+  const headers = () => ({ cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') });
+  await visit(first);
+  assert.equal((await fetch(first.base, { headers: headers() })).status, 200);
+  await visit(second);
+  assert.equal(jar.size, 2);
+  const firstPage = await fetch(first.base, { headers: headers() });
+  const secondPage = await fetch(second.base, { headers: headers() });
+  assert.equal(firstPage.status, 200); assert.equal(secondPage.status, 200);
+  const otherCsrf = (await secondPage.text()).match(/name="csrf" value="([a-f0-9]+)"/)[1];
+  const wrongForm = await fetch(`${first.base}/send-code`, {
+    method: 'POST', headers: { ...headers(), Origin: first.base },
+    body: new URLSearchParams({ csrf: otherCsrf, email: 'buyer@example.test' }),
+  });
+  assert.equal(wrongForm.status, 403);
+  assert.equal(a.state.calls.some(c => c.action === 'send_email_code'), false);
+});

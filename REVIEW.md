@@ -1,10 +1,10 @@
-# Review evidence — version 0.1.3
+# Review evidence — version 0.1.4
 
 This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation.
 
 ## Executed evidence
 
-- `npm test`: **23 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
+- `npm test`: **24 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
 - `node scripts/bundle-smoke.mjs`: bundled Node runtime starts through the actual stdio transport, discovers ten tools, queries the real Thailand catalog (20 grouped products on page 1), and rejects creation while purchases are disabled. No credentials, real order or payment are needed.
 - `npm run smoke:catalog`: real public catalog and product-detail reads. On 2026-10-13 the catalog contained 129 grouped Thailand results; a returned product was ID 2177, retail 2340 MMK. These are a dated observation, not a fixed test expectation or a current advertised price.
 - Dependency install audit: zero reported vulnerabilities at installation. Node SQLite is experimental in the tested Node 24 runtime.
@@ -20,6 +20,10 @@ The in-app browser reproduced a native form POST with `Origin: null` under the l
 ## 0.1.3 code-send recovery
 
 The portal keeps the email and OTP form visible when the website rejects a send or login request. Code-send results redirect to GET, so refreshing does not resend email. A per-email 60-second interval is reserved before the API call to suppress duplicate concurrent submissions; upstream rate limits remain active. A throttle response does not claim successful email delivery. SMTP failures are reduced to a safe customer message without returning server diagnostics. Automated tests verify retained login, no email resend on refresh, one API call under concurrent submissions and private OTP handling. In the real in-app browser, `scripts/portal-browser-smoke.mjs --throttled` showed the warning together with the OTP form, refreshed the GET result, and completed the mock account connection. No production email, order or payment was created by that test.
+
+## 0.1.4 local session isolation
+
+Browsers share cookies between services on the same hostname even when their ports differ. Two running local portals used the same cookie name, so opening another MCP instance or a test portal could invalidate the customer's active page. The regression reproduced that replacement. Each running portal now uses its own port in the cookie name while keeping session, Host, Origin and CSRF checks. The regression opens both portals with one browser-style cookie jar and verifies both remain available and reject each other's form token. The real in-app browser also opened a second isolated mock portal and refreshed the customer's local page; the original page remained available. No email or login was submitted by that browser verification. An expired-page message now tells the customer to request a fresh account connection from Cursor.
 
 ## Reviewer walkthrough draft
 
