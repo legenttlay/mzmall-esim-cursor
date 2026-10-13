@@ -1,6 +1,6 @@
 {
   "name": "mzmall-esim",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "legenttlay" },
   "repository": "https://github.com/legenttlay/mzmall-esim-cursor",
   "description": "Find travel eSIM plans, connect your MZ MALL account, prepare orders, approve balance payment or secure card checkout, and retrieve paid eSIM installation QR codes.",

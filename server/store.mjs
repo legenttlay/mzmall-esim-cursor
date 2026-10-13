@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, linkSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Per-OS-user storage. Neither credentials nor transaction journals belong in
@@ -9,11 +9,20 @@ export class Store {
   constructor(directory) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const keyPath = join(directory, 'vault.key');
-    if (!existsSync(keyPath)) writeFileSync(keyPath, randomBytes(32), { flag: 'wx', mode: 0o600 });
+    // Cursor can spawn multiple instances while loading/reloading plugins.
+    // Publish a completely written key atomically, and never replace a key
+    // another instance has already created (or an existing customer's key).
+    const pendingKey = join(directory, `.vault-key-init-${process.pid}-${randomBytes(8).toString('hex')}`);
+    writeFileSync(pendingKey, randomBytes(32), { flag: 'wx', mode: 0o600 });
+    try { linkSync(pendingKey, keyPath); }
+    catch (e) { if (e.code !== 'EEXIST') throw e; }
+    finally { unlinkSync(pendingKey); }
     this.key = readFileSync(keyPath);
     if (this.key.length !== 32) throw new Error('Invalid local vault key');
     this.db = new DatabaseSync(join(directory, 'state.db'));
-    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records (kind TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS locks (id TEXT PRIMARY KEY);');
+    // Set the busy handler BEFORE journal/schema changes. Otherwise a second
+    // first-run instance immediately fails with SQLITE_BUSY at initialization.
+    this.db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS records (kind TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS locks (id TEXT PRIMARY KEY);');
   }
   seal(value) {
     const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', this.key, iv);

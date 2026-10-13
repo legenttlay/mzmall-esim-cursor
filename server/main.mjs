@@ -10,7 +10,7 @@ import { EsimService } from './service.mjs';
 import { startPortal, quoteHash } from './portal.mjs';
 
 export function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: 'mzmall-esim', version: '0.1.0' });
+  const server = new McpServer({ name: 'mzmall-esim', version: '0.1.1' });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = z.string().uuid(), positive = z.number().int().positive();
@@ -63,4 +63,9 @@ async function main() {
   const stop = async () => { if (stopping) return; stopping = true; portal.server.close(); await server.close(); store.close(); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop); process.stdin.on('end', stop);
 }
-if (process.argv[1]?.endsWith('main.mjs') || process.argv[1]?.endsWith('index.mjs')) main().catch(() => { console.error('MZ MALL eSIM server could not start. Check the runtime and local vault permissions.'); process.exitCode = 1; });
+if (process.argv[1]?.endsWith('main.mjs') || process.argv[1]?.endsWith('index.mjs')) main().catch(e => {
+  const code = /^[A-Z0-9_]{1,40}$/.test(String(e.code)) ? e.code : 'STARTUP_ERROR';
+  // Diagnostic codes only: never print paths, vault contents or raw exceptions.
+  console.error(`MZ MALL eSIM startup failed (${code}, Node ${process.version}). Check runtime and local vault access.`);
+  process.exitCode = 1;
+});

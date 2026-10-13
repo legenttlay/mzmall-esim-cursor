@@ -41133,17 +41133,25 @@ import { join as join2 } from "node:path";
 // server/store.mjs
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, linkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 var Store = class {
   constructor(directory) {
     mkdirSync(directory, { recursive: true, mode: 448 });
     const keyPath = join(directory, "vault.key");
-    if (!existsSync(keyPath)) writeFileSync(keyPath, randomBytes(32), { flag: "wx", mode: 384 });
+    const pendingKey = join(directory, `.vault-key-init-${process.pid}-${randomBytes(8).toString("hex")}`);
+    writeFileSync(pendingKey, randomBytes(32), { flag: "wx", mode: 384 });
+    try {
+      linkSync(pendingKey, keyPath);
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    } finally {
+      unlinkSync(pendingKey);
+    }
     this.key = readFileSync(keyPath);
     if (this.key.length !== 32) throw new Error("Invalid local vault key");
     this.db = new DatabaseSync(join(directory, "state.db"));
-    this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records (kind TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS locks (id TEXT PRIMARY KEY);");
+    this.db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS records (kind TEXT, id TEXT, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS locks (id TEXT PRIMARY KEY);");
   }
   seal(value) {
     const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", this.key, iv);
@@ -41556,7 +41564,7 @@ async function startPortal({ api, store, service }) {
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.1.0" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.1.1" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
@@ -41628,8 +41636,9 @@ async function main() {
   process.on("SIGTERM", stop);
   process.stdin.on("end", stop);
 }
-if (process.argv[1]?.endsWith("main.mjs") || process.argv[1]?.endsWith("index.mjs")) main().catch(() => {
-  console.error("MZ MALL eSIM server could not start. Check the runtime and local vault permissions.");
+if (process.argv[1]?.endsWith("main.mjs") || process.argv[1]?.endsWith("index.mjs")) main().catch((e) => {
+  const code = /^[A-Z0-9_]{1,40}$/.test(String(e.code)) ? e.code : "STARTUP_ERROR";
+  console.error(`MZ MALL eSIM startup failed (${code}, Node ${process.version}). Check runtime and local vault access.`);
   process.exitCode = 1;
 });
 export {
