@@ -5,6 +5,9 @@ import { startPortal } from '../server/portal.mjs';
 // This never sends email or connects to the merchant's production service.
 const f = fixture();
 f.store.delete('account', 'current');
+if (process.argv.includes('--throttled')) f.state.before = async action => {
+  if (action === 'send_email_code') throw new Error('Please wait 60 seconds before requesting a new code');
+};
 const portal = await startPortal({ api: f.api, store: f.store, service: f.service });
 portal.server.prependListener('request', (req, res) => {
   if (req.method !== 'POST') return;

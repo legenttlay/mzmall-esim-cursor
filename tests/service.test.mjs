@@ -115,3 +115,8 @@ test('API prevents redirect credential forwarding and sanitizes gateway exceptio
   assert.equal(options.redirect, 'error'); assert.equal(options.headers.Authorization, 'Bearer test-token');
   assert.throws(() => new EsimApi({ origin: 'http://evil.test' }), /HTTPS/);
 });
+
+test('mail failures produce safe delivery guidance without exposing SMTP diagnostics', async () => {
+  const api = new EsimApi({ fetchImpl: async () => new Response(JSON.stringify({ code: 0, msg: 'Failed to send email: SMTP password=private-test-secret' })) });
+  await assert.rejects(api.call('send_email_code', { email: 'buyer@example.test' }, { write: true }), e => /email could not be sent/.test(e.message) && !e.message.includes('private-test-secret') && !e.uncertain);
+});

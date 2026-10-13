@@ -41228,7 +41228,7 @@ var EsimApi = class {
     }
     if (!response.ok || Number(body.code) !== 1) {
       const allowed = /^(Insufficient balance|Already paid|Product not found|Order not found|Email is required|Invalid email|Invalid or expired.*code|Invalid verification code|Too many.*|Please wait.*|Unauthorized|Not logged in|Unsupported payment method)$/i;
-      const safe = allowed.test(String(body.msg)) ? String(body.msg) : "The service rejected this request. Verify account, product and payment status before continuing.";
+      const safe = allowed.test(String(body.msg)) ? String(body.msg) : action === "send_email_code" && /^Failed to send email:/i.test(String(body.msg)) ? "The email could not be sent. Please wait at least 60 seconds before trying again or contact MZ MALL support." : "The service rejected this request. Verify account, product and payment status before continuing.";
       throw new ApiError(safe, write && response.status >= 500);
     }
     return body.data;
@@ -41470,13 +41470,19 @@ var quoteHash = (q) => createHash2("sha256").update(JSON.stringify(q)).digest("h
 async function startPortal({ api, store, service, port = 0 }) {
   const nonce = randomBytes2(32).toString("hex"), csrf = randomBytes2(32).toString("hex");
   let base;
+  let loginEmail = "", loginNotice = "";
+  const sendCooldowns = /* @__PURE__ */ new Map();
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
-  const loginForm = (email3) => form("/send-code", '<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>', "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
+  const loginForm = (email3) => form("/send-code", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label>`, "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
   const server = createServer(async (req, res) => {
     const send = (status, html) => {
       res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
       res.end(html);
+    };
+    const returnToLogin = () => {
+      res.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Referrer-Policy": "same-origin" });
+      res.end();
     };
     try {
       if (req.headers.host !== new URL(base).host) return send(403, "Forbidden host");
@@ -41496,7 +41502,7 @@ async function startPortal({ api, store, service, port = 0 }) {
             connected = "<p>Your session expired. Sign in again.</p>";
           }
         }
-        return send(200, shell("Connect your eSIM account", connected + loginForm("")));
+        return send(200, shell("Connect your eSIM account", connected + (loginNotice ? `<p role="status">${escape2(loginNotice)}</p>` : "") + loginForm(loginEmail)));
       }
       if (req.method === "GET" && u.pathname === "/approve") {
         const method = u.searchParams.get("method");
@@ -41519,17 +41525,39 @@ async function startPortal({ api, store, service, port = 0 }) {
       if (u.pathname === "/send-code" || u.pathname === "/login") {
         const email3 = String(body.get("email") ?? "").trim();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email3) || email3.length > 254) return send(400, "Invalid email");
+        loginEmail = email3;
         if (u.pathname === "/send-code") {
-          await api.call("send_email_code", { email: email3 }, { write: true });
-          return send(200, shell("Check your email", "<p>Enter the code below to connect your account.</p>" + loginForm(email3)));
+          const nextSend = sendCooldowns.get(email3) ?? 0;
+          if (nextSend > Date.now()) {
+            loginNotice = `Please wait ${Math.ceil((nextSend - Date.now()) / 1e3)} seconds before requesting a new code. If you already received a code, enter it below to connect your account.`;
+            return returnToLogin();
+          }
+          for (const [key, until] of sendCooldowns) if (until <= Date.now()) sendCooldowns.delete(key);
+          sendCooldowns.set(email3, Date.now() + 6e4);
+          try {
+            await api.call("send_email_code", { email: email3 }, { write: true });
+            loginNotice = "Check your email, including spam, and enter the latest verification code below.";
+          } catch (e) {
+            loginNotice = `${e.message} If you already received a code, enter it below. Otherwise wait at least 60 seconds before requesting another; this message does not confirm email delivery.`;
+          }
+          return returnToLogin();
         }
         const code = String(body.get("code") ?? "");
-        if (!/^[0-9]{6}$/.test(code)) return send(400, "Invalid verification code");
-        const login = await api.call("login_email", { email: email3, code }, { write: true });
-        if (!login.token) throw new Error("Account connection failed");
-        const verified = await api.call("user_info", {}, { token: login.token });
-        store.put("account", "current", { token: login.token, uid: verified.uid, expire_time: login.expire_time });
-        return send(200, shell("Account connected", "<p>Return to Cursor. The plugin can now access your own eSIM account.</p>"));
+        if (!/^[0-9]{6}$/.test(code)) {
+          loginNotice = "Enter the six-digit verification code from your latest email.";
+          return returnToLogin();
+        }
+        try {
+          const login = await api.call("login_email", { email: email3, code }, { write: true });
+          if (!login.token) throw new Error("Account connection failed");
+          const verified = await api.call("user_info", {}, { token: login.token });
+          store.put("account", "current", { token: login.token, uid: verified.uid, expire_time: login.expire_time });
+          loginNotice = "";
+          return send(200, shell("Account connected", "<p>Return to Cursor. The plugin can now access your own eSIM account.</p>"));
+        } catch (e) {
+          loginNotice = e.message;
+          return returnToLogin();
+        }
       }
       if (u.pathname === "/disconnect") {
         const token = store.get("account", "current")?.token;
@@ -41567,7 +41595,7 @@ async function startPortal({ api, store, service, port = 0 }) {
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.1.2" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.1.3" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();

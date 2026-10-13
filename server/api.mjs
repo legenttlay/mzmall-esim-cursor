@@ -24,7 +24,7 @@ export class EsimApi {
       // Never forward raw upstream exceptions, which can contain gateway URLs,
       // credential fragments or internal SQL. Specific safe customer errors only.
       const allowed = /^(Insufficient balance|Already paid|Product not found|Order not found|Email is required|Invalid email|Invalid or expired.*code|Invalid verification code|Too many.*|Please wait.*|Unauthorized|Not logged in|Unsupported payment method)$/i;
-      const safe = allowed.test(String(body.msg)) ? String(body.msg) : 'The service rejected this request. Verify account, product and payment status before continuing.';
+      const safe = allowed.test(String(body.msg)) ? String(body.msg) : action === 'send_email_code' && /^Failed to send email:/i.test(String(body.msg)) ? 'The email could not be sent. Please wait at least 60 seconds before trying again or contact MZ MALL support.' : 'The service rejected this request. Verify account, product and payment status before continuing.';
       throw new ApiError(safe, write && response.status >= 500);
     }
     return body.data;

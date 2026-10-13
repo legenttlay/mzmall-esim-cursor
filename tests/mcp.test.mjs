@@ -69,3 +69,58 @@ test('private sign-in portal accepts same-origin email and OTP forms with a vali
   assert.equal(f.store.get('account', 'current').token, 'test-login-token');
   assert.equal(f.state.count, 0); assert.equal(f.state.payCalls, 0);
 });
+
+test('code-send throttling keeps login available and page refresh never resends email', async t => {
+  const f = fixture(), portal = await startPortal({ api: f.api, store: f.store, service: f.service });
+  f.store.delete('account', 'current');
+  f.state.before = async action => { if (action === 'send_email_code') throw new Error('Please wait 60 seconds before requesting a new code'); };
+  t.after(async () => { await new Promise(r => portal.server.close(r)); f.close(); });
+  const redirect = await fetch(portal.accountUrl(), { redirect: 'manual' });
+  const cookie = redirect.headers.get('set-cookie').split(';')[0];
+  const page = await fetch(portal.base, { headers: { cookie } });
+  const csrf = (await page.text()).match(/name="csrf" value="([a-f0-9]+)"/)[1];
+  const headers = { cookie, Origin: portal.base, 'Content-Type': 'application/x-www-form-urlencoded' };
+  const send = () => fetch(`${portal.base}/send-code`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', csrf }), redirect: 'manual' });
+  const posted = await send(); assert.equal(posted.status, 303); assert.equal(posted.headers.get('location'), '/');
+  const result = await fetch(portal.base, { headers: { cookie } });
+  const html = await result.text();
+  assert.match(html, /Please wait 60 seconds/);
+  assert.match(html, /does not confirm email delivery/);
+  assert.match(html, /action="\/login"/); assert.match(html, /value="buyer@example.test"/);
+  assert.equal(f.store.get('account', 'current'), null);
+  await fetch(portal.base, { headers: { cookie } });
+  assert.equal((await send()).status, 303);
+  assert.equal(f.state.calls.filter(c => c.action === 'send_email_code').length, 1);
+  const connected = await fetch(`${portal.base}/login`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', code: '123456', csrf }) });
+  assert.equal(connected.status, 200); assert.match(await connected.text(), /Account connected/);
+  assert.equal(f.state.count, 0); assert.equal(f.state.payCalls, 0);
+});
+
+test('concurrent code-send submissions call the email API once and failed OTP entry keeps its form', async t => {
+  const f = fixture(), portal = await startPortal({ api: f.api, store: f.store, service: f.service });
+  f.store.delete('account', 'current');
+  t.after(async () => { await new Promise(r => portal.server.close(r)); f.close(); });
+  const redirect = await fetch(portal.accountUrl(), { redirect: 'manual' });
+  const cookie = redirect.headers.get('set-cookie').split(';')[0];
+  const page = await fetch(portal.base, { headers: { cookie } });
+  const csrf = (await page.text()).match(/name="csrf" value="([a-f0-9]+)"/)[1];
+  const headers = { cookie, Origin: portal.base, 'Content-Type': 'application/x-www-form-urlencoded' };
+  let started, release;
+  const pending = new Promise(r => { release = r; });
+  const emailStarted = new Promise(r => { started = r; });
+  f.state.before = async action => {
+    if (action === 'send_email_code') { started(); await pending; }
+    if (action === 'login_email') throw new Error('Invalid or expired verification code');
+  };
+  const send = () => fetch(`${portal.base}/send-code`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', csrf }), redirect: 'manual' });
+  const first = send(); await emailStarted;
+  const duplicate = await send(); assert.equal(duplicate.status, 303);
+  release(); assert.equal((await first).status, 303);
+  assert.equal(f.state.calls.filter(c => c.action === 'send_email_code').length, 1);
+  const denied = await fetch(`${portal.base}/login`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', code: '987654', csrf }) });
+  assert.equal(denied.status, 200);
+  const html = await denied.text(); assert.match(html, /Invalid or expired verification code/);
+  assert.match(html, /action="\/login"/); assert.equal(html.includes('987654'), false);
+  assert.equal(f.store.get('account', 'current'), null);
+  assert.equal(f.state.count, 0); assert.equal(f.state.payCalls, 0);
+});

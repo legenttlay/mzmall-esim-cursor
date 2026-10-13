@@ -10,7 +10,7 @@ import { EsimService } from './service.mjs';
 import { startPortal, quoteHash } from './portal.mjs';
 
 export function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: 'mzmall-esim', version: '0.1.2' });
+  const server = new McpServer({ name: 'mzmall-esim', version: '0.1.3' });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = z.string().uuid(), positive = z.number().int().positive();
