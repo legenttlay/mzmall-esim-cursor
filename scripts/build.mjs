@@ -18,7 +18,7 @@ for (const name of [...packages].sort()) {
     try { notices += (await readFile(join(directory, file), 'utf8')) + '\n\n'; break; } catch {}
   }
 }
-await writeFile(join(root, 'THIRD-PARTY-NOTICES.md'), notices);
+await writeFile(join(root, 'THIRD-PARTY-NOTICES.md'), notices.trimEnd() + '\n');
 const publicRoot = join(root, 'artifacts/public-repository');
 await mkdir(publicRoot, { recursive: true });
 const paths = ['.cursor-plugin', 'mcp.json', 'assets', 'skills', 'dist', 'server', 'tests', 'scripts', 'package.json', 'package-lock.json', '.gitignore', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'REVIEW.md', 'NEXT-STEPS.zh-CN.md'];
