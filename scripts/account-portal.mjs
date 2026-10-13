@@ -11,8 +11,8 @@ const store = new Store(join(homedir(), '.mzmall-esim'));
 const api = new EsimApi();
 const service = new EsimService({ api, store, purchasesEnabled: false });
 // Optional loopback port lets a restarted helper reuse the user's open address.
-const portal = await startPortal({ api, store, service, port: Number(process.argv[2] ?? 0) });
-console.log(JSON.stringify({ sign_in_url: portal.accountUrl(), account_connection_only: true, created_orders: 0, payments: 0 }));
+const portal = await startPortal({ api, store, service, port: Number(process.argv[2] ?? 0), websiteLogin: true });
+console.log(JSON.stringify({ sign_in_url: await portal.accountUrl(), account_connection_only: true, created_orders: 0, payments: 0 }));
 let stopping = false;
 function stop() {
   if (stopping) return;

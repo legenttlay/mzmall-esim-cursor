@@ -10,7 +10,7 @@ import { EsimService } from './service.mjs';
 import { startPortal, quoteHash } from './portal.mjs';
 
 export function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: 'mzmall-esim', version: '0.1.4' });
+  const server = new McpServer({ name: 'mzmall-esim', version: '0.2.0' });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = z.string().uuid(), positive = z.number().int().positive();
@@ -20,7 +20,7 @@ export function makeServer({ service, portal, store }) {
   });
   tool('search_esim_plans', { description: 'Search currently sellable digital eSIM plans by destination, keyword and exact validity. Prices are MMK retail prices. No purchase or login.', inputSchema: { country_code: z.string().regex(/^[A-Z]{2}$/).optional(), keyword: z.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1) }, annotations: read }, args => service.search(args));
   tool('get_esim_plan', { description: 'Read a digital eSIM plan, retail price, coverage, data limits and activation instructions. Does not verify device compatibility.', inputSchema: { product_id: positive }, annotations: read }, args => service.product(args.product_id));
-  tool('connect_esim_account', { description: 'Return a private local browser sign-in page. The customer enters email and OTP there, never in chat. Sign-in may create an account for a new email.', inputSchema: {}, annotations: read }, async () => ({ sign_in_url: portal.accountUrl() }));
+  tool('connect_esim_account', { description: 'Return a private connection link that reuses the existing MZ MALL website sign-in and asks the customer to allow account connection. Email, verification codes and tokens stay out of chat. Connecting does not create an order or authorize a purchase.', inputSchema: {}, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async () => ({ sign_in_url: await portal.accountUrl() }));
   tool('get_esim_account', { description: 'Read the connected customer account and MMK balance; does not expose login tokens.', inputSchema: {}, annotations: read }, async () => { const a = await service.auth(); return { account_id: a.uid, email: a.email, balance: a.balance, currency: 'MMK' }; });
   tool('prepare_esim_purchase', { description: 'Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.', inputSchema: { product_id: positive, quantity: positive.max(30), email: z.string().email().max(254), max_total_mmk: z.number().positive().finite(), request_id: z.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, args => service.prepare(args));
   tool('get_esim_payment_quote', { description: 'Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.', inputSchema: { purchase_id: id, payment_method: z.enum(['balance', 'card']) }, annotations: { ...read, readOnlyHint: false } }, args => service.quote(args.purchase_id, args.payment_method));
@@ -55,7 +55,7 @@ async function main() {
   const store = new Store(process.env.MZMALL_DATA_DIR || join(homedir(), '.mzmall-esim'));
   const api = new EsimApi();
   const service = new EsimService({ api, store, purchasesEnabled: process.env.MZMALL_ENABLE_PURCHASES === '1' });
-  const portal = await startPortal({ api, store, service });
+  const portal = await startPortal({ api, store, service, websiteLogin: true });
   const server = makeServer({ service, portal, store });
   const transport = new StdioServerTransport();
   await server.connect(transport);

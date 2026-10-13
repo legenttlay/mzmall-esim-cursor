@@ -1,13 +1,15 @@
 import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
+import { WebsiteAccountConnection } from './website-account.mjs';
 
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const quoteHash = q => createHash('sha256').update(JSON.stringify(q)).digest('hex');
-export async function startPortal({ api, store, service, port = 0 }) {
+export async function startPortal({ api, store, service, port = 0, websiteLogin = false }) {
   const nonce = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex');
   let base, cookieName;
   let loginEmail = '', loginNotice = '';
   const sendCooldowns = new Map();
+  const websiteConnection = websiteLogin ? new WebsiteAccountConnection({ api, store }) : null;
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM · Private account connection</p><h1>${escape(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
   const loginForm = email => form('/send-code', `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape(email)}"></label>`, 'Send verification code') + form('/login', `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape(email)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, 'Connect my account') + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user’s local plugin.</p>';
@@ -19,6 +21,13 @@ export async function startPortal({ api, store, service, port = 0 }) {
     try {
       if (req.headers.host !== new URL(base).host) return send(403, 'Forbidden host');
       const u = new URL(req.url, base), cookies = String(req.headers.cookie ?? '').split(';').map(s => s.trim());
+      if (websiteConnection && req.method === 'GET' && u.pathname === '/account-callback') {
+        const result = await websiteConnection.complete(u.searchParams, `${base}/account-callback`);
+        if (result.cancelled) return send(200, shell('Connection cancelled', '<p>No account was connected. Return to Cursor when you want to connect.</p>'));
+        // A callback starts at the merchant origin. Render success directly:
+        // Strict cookies need not accompany a cross-site redirect chain.
+        return send(200, shell('Account connected', `<p>账号已连接。请返回 Cursor 继续；连接本身没有下单或扣款。</p><p><a href="/?session=${nonce}">查看连接状态</a></p>`));
+      }
       if (req.method === 'GET' && u.searchParams.get('session') === nonce) {
         res.writeHead(303, { Location: u.pathname + (u.searchParams.has('purchase') ? `?purchase=${encodeURIComponent(u.searchParams.get('purchase'))}&method=${encodeURIComponent(u.searchParams.get('method') ?? 'balance')}` : ''), 'Set-Cookie': `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return res.end();
       }
@@ -28,8 +37,14 @@ export async function startPortal({ api, store, service, port = 0 }) {
         if (store.get('account', 'current')) {
           try { const a = await service.auth(); connected = `<p>Connected account: ${escape(a.email)} · Balance: ${a.balance} MMK.</p>` + form('/disconnect', '', 'Disconnect'); } catch { connected = '<p>Your session expired. Sign in again.</p>'; }
         }
+        if (websiteConnection) return send(200, shell(connected ? 'Account connected' : 'Use your MZ MALL website account', connected + '<p>Sign-in and permission confirmation use the existing MZ MALL website. This local service only receives the protected callback.</p><p><a href="/website-login">Connect through the MZ MALL website</a></p>'));
         return send(200, shell('Connect your eSIM account', connected + (loginNotice ? `<p role="status">${escape(loginNotice)}</p>` : '') + loginForm(loginEmail)));
       }
+      if (websiteConnection && req.method === 'GET' && u.pathname === '/website-login') {
+        const url = await websiteConnection.begin(base);
+        res.writeHead(303, { Location: url, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return res.end();
+      }
+      if (websiteConnection && ['/send-code', '/login'].includes(u.pathname)) return send(410, shell('Use website sign-in', '<p>Return to Cursor and request a new account connection. Email and verification-code entry now use the existing MZ MALL website.</p>'));
       if (req.method === 'GET' && u.pathname === '/approve') {
         const method = u.searchParams.get('method');
         if (!['balance', 'card'].includes(method)) return send(400, 'Invalid payment method');
@@ -109,5 +124,5 @@ export async function startPortal({ api, store, service, port = 0 }) {
   // Browsers share cookies across ports. Give each running portal its own
   // cookie name so another MCP instance or test portal cannot overwrite it.
   cookieName = `mz_esim_session_${server.address().port}`;
-  return { server, base, accountUrl: () => `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
+  return { server, base, accountUrl: () => websiteConnection ? websiteConnection.begin(base) : `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }

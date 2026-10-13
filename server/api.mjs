@@ -1,4 +1,4 @@
-const ACTIONS = new Set(['search', 'products', 'product', 'exchange_rate', 'user_info', 'send_email_code', 'login_email', 'logout', 'order_create', 'pay_info', 'pay', 'order_detail', 'orders']);
+const ACTIONS = new Set(['search', 'products', 'product', 'exchange_rate', 'user_info', 'send_email_code', 'login_email', 'logout', 'order_create', 'pay_info', 'pay', 'order_detail', 'orders', 'agent_connect_start', 'agent_connect_exchange']);
 export class ApiError extends Error {
   constructor(message, uncertain = false) { super(message); this.uncertain = uncertain; }
 }

@@ -3354,9 +3354,9 @@ var require_utils = __commonJS({
       let output2 = "";
       for (let i = 0; i < input2.length; i++) {
         if (input2[i] === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            const normalizedHex = hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            const normalizedHex = hex4.toUpperCase();
             const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
             if (decodeUnreserved && isUnreserved(decoded)) {
               output2 += decoded;
@@ -3376,9 +3376,9 @@ var require_utils = __commonJS({
       for (let i = 0; i < input2.length; i++) {
         const ch = input2[i];
         if (ch === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            const normalizedHex = hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            const normalizedHex = hex4.toUpperCase();
             const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
             if (decoded !== "." && isUnreserved(decoded)) {
               output2 += decoded;
@@ -3418,9 +3418,9 @@ var require_utils = __commonJS({
       for (let i = 0; i < input2.length; i++) {
         const ch = input2[i];
         if (ch === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            output2 += "%" + hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            output2 += "%" + hex4.toUpperCase();
             i += 2;
             continue;
           }
@@ -3456,9 +3456,9 @@ var require_utils = __commonJS({
       for (let i = 0; i < input2.length; i++) {
         const ch = input2[i];
         if (ch === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            output2 += "%" + hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            output2 += "%" + hex4.toUpperCase();
             i += 2;
             continue;
           }
@@ -3503,9 +3503,9 @@ var require_utils = __commonJS({
       for (let i = 0; i < input2.length; i++) {
         const ch = input2[i];
         if (ch === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            const normalizedHex = hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            const normalizedHex = hex4.toUpperCase();
             const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
             if (isUnreserved(decoded)) {
               output2 += decoded;
@@ -3543,9 +3543,9 @@ var require_utils = __commonJS({
       let output2 = "";
       for (let i = 0; i < input2.length; i++) {
         if (input2[i] === "%" && i + 2 < input2.length) {
-          const hex3 = input2.slice(i + 1, i + 3);
-          if (isHexPair(hex3)) {
-            output2 += "%" + hex3.toUpperCase();
+          const hex4 = input2.slice(i + 1, i + 3);
+          if (isHexPair(hex4)) {
+            output2 += "%" + hex4.toUpperCase();
             i += 2;
             continue;
           }
@@ -11101,16 +11101,16 @@ var require_png = __commonJS({
 // node_modules/qrcode/lib/renderer/utils.js
 var require_utils3 = __commonJS({
   "node_modules/qrcode/lib/renderer/utils.js"(exports) {
-    function hex2rgba(hex3) {
-      if (typeof hex3 === "number") {
-        hex3 = hex3.toString();
+    function hex2rgba(hex4) {
+      if (typeof hex4 === "number") {
+        hex4 = hex4.toString();
       }
-      if (typeof hex3 !== "string") {
+      if (typeof hex4 !== "string") {
         throw new Error("Color should be defined as hex string");
       }
-      let hexCode = hex3.slice().replace("#", "").split("");
+      let hexCode = hex4.slice().replace("#", "").split("");
       if (hexCode.length < 3 || hexCode.length === 5 || hexCode.length > 8) {
-        throw new Error("Invalid hex color: " + hex3);
+        throw new Error("Invalid hex color: " + hex4);
       }
       if (hexCode.length === 3 || hexCode.length === 4) {
         hexCode = Array.prototype.concat.apply([], hexCode.map(function(c) {
@@ -16671,8 +16671,8 @@ function base64urlToUint8Array(base64url3) {
 function uint8ArrayToBase64url(bytes) {
   return uint8ArrayToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
-function hexToUint8Array(hex3) {
-  const cleanHex = hex3.replace(/^0x/, "");
+function hexToUint8Array(hex4) {
+  const cleanHex = hex4.replace(/^0x/, "");
   if (cleanHex.length % 2 !== 0) {
     throw new Error("Invalid hex string length");
   }
@@ -41191,7 +41191,7 @@ var Store = class {
 };
 
 // server/api.mjs
-var ACTIONS = /* @__PURE__ */ new Set(["search", "products", "product", "exchange_rate", "user_info", "send_email_code", "login_email", "logout", "order_create", "pay_info", "pay", "order_detail", "orders"]);
+var ACTIONS = /* @__PURE__ */ new Set(["search", "products", "product", "exchange_rate", "user_info", "send_email_code", "login_email", "logout", "order_create", "pay_info", "pay", "order_detail", "orders", "agent_connect_start", "agent_connect_exchange"]);
 var ApiError = class extends Error {
   constructor(message, uncertain = false) {
     super(message);
@@ -41464,14 +41464,67 @@ var EsimService = class {
 
 // server/portal.mjs
 import { createServer } from "node:http";
+import { randomBytes as randomBytes3, createHash as createHash3 } from "node:crypto";
+
+// server/website-account.mjs
 import { randomBytes as randomBytes2, createHash as createHash2 } from "node:crypto";
+var hex3 = (value) => /^[a-f0-9]{64}$/.test(String(value ?? ""));
+var WebsiteAccountConnection = class {
+  constructor({ api, store, now = () => Date.now() }) {
+    Object.assign(this, { api, store, now });
+  }
+  async begin(base) {
+    const callback = new URL("/account-callback", base);
+    if (callback.protocol !== "http:" || callback.hostname !== "127.0.0.1" || !callback.port) throw new Error("Invalid local callback");
+    const state = randomBytes2(32).toString("hex"), verifier = randomBytes2(32).toString("base64url");
+    const record2 = { verifier, callback_url: callback.href, expires: this.now() + 6e5, status: "starting" };
+    this.store.put("website-connection", state, record2);
+    const started = await this.api.call("agent_connect_start", {
+      redirect_uri: callback.href,
+      state,
+      code_challenge: createHash2("sha256").update(verifier).digest("base64url")
+    }, { write: true });
+    const url2 = new URL(started.authorization_url), origin = this.api.origin ?? "https://888688889.com";
+    if (url2.origin !== origin || url2.pathname !== "/index.php/Home/API/EsimApi/agent_connect_page.html" || url2.username || url2.password || url2.hash || !hex3(started.connection_id) || url2.searchParams.get("connection") !== started.connection_id || [...url2.searchParams.keys()].some((k) => k !== "connection") || url2.searchParams.getAll("connection").length !== 1) throw new Error("Invalid website connection link");
+    record2.connection_id = started.connection_id;
+    record2.status = "ready";
+    this.store.put("website-connection", state, record2);
+    return url2.href;
+  }
+  async complete(params, callbackUrl) {
+    const state = params.get("state");
+    if (!hex3(state) || params.getAll("state").length !== 1 || [...params.keys()].some((k) => !["state", "code", "error"].includes(k))) throw new Error("Invalid account connection callback");
+    return this.store.locked(`website-connect:${state}`, async () => {
+      const record2 = this.store.get("website-connection", state);
+      if (!record2 || record2.expires <= this.now() || record2.callback_url !== callbackUrl || record2.status !== "ready") throw new Error("Account connection expired or interrupted. Request a new link from Cursor.");
+      if (params.get("error") === "access_denied" && !params.has("code") && params.getAll("error").length === 1) {
+        this.store.delete("website-connection", state);
+        return { connected: false, cancelled: true };
+      }
+      const code = params.get("code");
+      if (!hex3(code) || params.getAll("code").length !== 1 || params.has("error")) throw new Error("Invalid account connection callback");
+      record2.status = "exchange_started";
+      this.store.put("website-connection", state, record2);
+      const login = await this.api.call("agent_connect_exchange", { code, code_verifier: record2.verifier, redirect_uri: record2.callback_url }, { write: true });
+      if (!login.token || !Number.isSafeInteger(Number(login.uid)) || Number(login.uid) < 1) throw new Error("Account connection failed");
+      const verified = await this.api.call("user_info", {}, { token: login.token });
+      if (Number(verified.uid) !== Number(login.uid)) throw new Error("Account connection identity did not match");
+      this.store.put("account", "current", { token: login.token, uid: Number(verified.uid), expire_time: login.expire_time });
+      this.store.delete("website-connection", state);
+      return { connected: true };
+    });
+  }
+};
+
+// server/portal.mjs
 var escape2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var quoteHash = (q) => createHash2("sha256").update(JSON.stringify(q)).digest("hex");
-async function startPortal({ api, store, service, port = 0 }) {
-  const nonce = randomBytes2(32).toString("hex"), csrf = randomBytes2(32).toString("hex");
+var quoteHash = (q) => createHash3("sha256").update(JSON.stringify(q)).digest("hex");
+async function startPortal({ api, store, service, port = 0, websiteLogin = false }) {
+  const nonce = randomBytes3(32).toString("hex"), csrf = randomBytes3(32).toString("hex");
   let base, cookieName;
   let loginEmail = "", loginNotice = "";
   const sendCooldowns = /* @__PURE__ */ new Map();
+  const websiteConnection = websiteLogin ? new WebsiteAccountConnection({ api, store }) : null;
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
   const loginForm = (email3) => form("/send-code", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label>`, "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
@@ -41487,6 +41540,11 @@ async function startPortal({ api, store, service, port = 0 }) {
     try {
       if (req.headers.host !== new URL(base).host) return send(403, "Forbidden host");
       const u = new URL(req.url, base), cookies = String(req.headers.cookie ?? "").split(";").map((s) => s.trim());
+      if (websiteConnection && req.method === "GET" && u.pathname === "/account-callback") {
+        const result = await websiteConnection.complete(u.searchParams, `${base}/account-callback`);
+        if (result.cancelled) return send(200, shell("Connection cancelled", "<p>No account was connected. Return to Cursor when you want to connect.</p>"));
+        return send(200, shell("Account connected", `<p>\u8D26\u53F7\u5DF2\u8FDE\u63A5\u3002\u8BF7\u8FD4\u56DE Cursor \u7EE7\u7EED\uFF1B\u8FDE\u63A5\u672C\u8EAB\u6CA1\u6709\u4E0B\u5355\u6216\u6263\u6B3E\u3002</p><p><a href="/?session=${nonce}">\u67E5\u770B\u8FDE\u63A5\u72B6\u6001</a></p>`));
+      }
       if (req.method === "GET" && u.searchParams.get("session") === nonce) {
         res.writeHead(303, { Location: u.pathname + (u.searchParams.has("purchase") ? `?purchase=${encodeURIComponent(u.searchParams.get("purchase"))}&method=${encodeURIComponent(u.searchParams.get("method") ?? "balance")}` : ""), "Set-Cookie": `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
         return res.end();
@@ -41502,14 +41560,21 @@ async function startPortal({ api, store, service, port = 0 }) {
             connected = "<p>Your session expired. Sign in again.</p>";
           }
         }
+        if (websiteConnection) return send(200, shell(connected ? "Account connected" : "Use your MZ MALL website account", connected + '<p>Sign-in and permission confirmation use the existing MZ MALL website. This local service only receives the protected callback.</p><p><a href="/website-login">Connect through the MZ MALL website</a></p>'));
         return send(200, shell("Connect your eSIM account", connected + (loginNotice ? `<p role="status">${escape2(loginNotice)}</p>` : "") + loginForm(loginEmail)));
       }
+      if (websiteConnection && req.method === "GET" && u.pathname === "/website-login") {
+        const url2 = await websiteConnection.begin(base);
+        res.writeHead(303, { Location: url2, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+        return res.end();
+      }
+      if (websiteConnection && ["/send-code", "/login"].includes(u.pathname)) return send(410, shell("Use website sign-in", "<p>Return to Cursor and request a new account connection. Email and verification-code entry now use the existing MZ MALL website.</p>"));
       if (req.method === "GET" && u.pathname === "/approve") {
         const method = u.searchParams.get("method");
         if (!["balance", "card"].includes(method)) return send(400, "Invalid payment method");
         const q = await service.quote(u.searchParams.get("purchase"), method);
         if (q.already_paid) return send(200, shell("Already paid", "<p>Return to Cursor and check delivery. Do not pay again.</p>"));
-        const ticket = randomBytes2(24).toString("hex");
+        const ticket = randomBytes3(24).toString("hex");
         store.put("approval-ticket", ticket, { quote: q, hash: quoteHash(q), expires: Date.now() + 12e4 });
         const body2 = `<p>${escape2(q.product)} \xD7 ${q.quantity}</p><p><strong>${q.total} ${q.currency}</strong> \xB7 ${escape2(method)}</p><p>Delivery email: ${escape2(q.delivery_email)}</p><p>${escape2(q.terms)}</p><p>${method === "card" ? "This approves opening secure card checkout. The final charge requires your authorization in that checkout." : "This authorizes this exact purchase from your MZ MALL account balance."}</p>` + form("/approve", `<input type="hidden" name="ticket" value="${ticket}">`, "Approve this purchase");
         return send(200, shell("Review this purchase", body2));
@@ -41591,12 +41656,12 @@ async function startPortal({ api, store, service, port = 0 }) {
   });
   base = `http://127.0.0.1:${server.address().port}`;
   cookieName = `mz_esim_session_${server.address().port}`;
-  return { server, base, accountUrl: () => `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
+  return { server, base, accountUrl: () => websiteConnection ? websiteConnection.begin(base) : `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.1.4" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.2.0" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
@@ -41610,7 +41675,7 @@ function makeServer({ service, portal, store }) {
   });
   tool("search_esim_plans", { description: "Search currently sellable digital eSIM plans by destination, keyword and exact validity. Prices are MMK retail prices. No purchase or login.", inputSchema: { country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), keyword: external_exports.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1) }, annotations: read }, (args) => service.search(args));
   tool("get_esim_plan", { description: "Read a digital eSIM plan, retail price, coverage, data limits and activation instructions. Does not verify device compatibility.", inputSchema: { product_id: positive }, annotations: read }, (args) => service.product(args.product_id));
-  tool("connect_esim_account", { description: "Return a private local browser sign-in page. The customer enters email and OTP there, never in chat. Sign-in may create an account for a new email.", inputSchema: {}, annotations: read }, async () => ({ sign_in_url: portal.accountUrl() }));
+  tool("connect_esim_account", { description: "Return a private connection link that reuses the existing MZ MALL website sign-in and asks the customer to allow account connection. Email, verification codes and tokens stay out of chat. Connecting does not create an order or authorize a purchase.", inputSchema: {}, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async () => ({ sign_in_url: await portal.accountUrl() }));
   tool("get_esim_account", { description: "Read the connected customer account and MMK balance; does not expose login tokens.", inputSchema: {}, annotations: read }, async () => {
     const a = await service.auth();
     return { account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK" };
@@ -41652,7 +41717,7 @@ async function main() {
   const store = new Store(process.env.MZMALL_DATA_DIR || join2(homedir(), ".mzmall-esim"));
   const api = new EsimApi();
   const service = new EsimService({ api, store, purchasesEnabled: process.env.MZMALL_ENABLE_PURCHASES === "1" });
-  const portal = await startPortal({ api, store, service });
+  const portal = await startPortal({ api, store, service, websiteLogin: true });
   const server = makeServer({ service, portal, store });
   const transport = new StdioServerTransport();
   await server.connect(transport);

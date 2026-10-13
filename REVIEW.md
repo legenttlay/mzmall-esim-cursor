@@ -1,10 +1,10 @@
-# Review evidence — version 0.1.4
+# Review evidence — version 0.2.0
 
-This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation.
+This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; customer sign-in and consent remain a user handoff.
 
 ## Executed evidence
 
-- `npm test`: **24 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
+- `npm test`: **29 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
 - `node scripts/bundle-smoke.mjs`: bundled Node runtime starts through the actual stdio transport, discovers ten tools, queries the real Thailand catalog (20 grouped products on page 1), and rejects creation while purchases are disabled. No credentials, real order or payment are needed.
 - `npm run smoke:catalog`: real public catalog and product-detail reads. On 2026-10-13 the catalog contained 129 grouped Thailand results; a returned product was ID 2177, retail 2340 MMK. These are a dated observation, not a fixed test expectation or a current advertised price.
 - Dependency install audit: zero reported vulnerabilities at installation. Node SQLite is experimental in the tested Node 24 runtime.
@@ -24,6 +24,10 @@ The portal keeps the email and OTP form visible when the website rejects a send 
 ## 0.1.4 local session isolation
 
 Browsers share cookies between services on the same hostname even when their ports differ. Two running local portals used the same cookie name, so opening another MCP instance or a test portal could invalidate the customer's active page. The regression reproduced that replacement. Each running portal now uses its own port in the cookie name while keeping session, Host, Origin and CSRF checks. The regression opens both portals with one browser-style cookie jar and verifies both remain available and reject each other's form token. The real in-app browser also opened a second isolated mock portal and refreshed the customer's local page; the original page remained available. No email or login was submitted by that browser verification. An expired-page message now tells the customer to request a fresh account connection from Cursor.
+
+## 0.2.0 existing website login
+
+Account connection now returns a merchant website link. The existing hotel-app customer login and return-to-webview route are reused, followed by explicit website connection consent. The callback uses a ten-minute state/verifier pair and a two-minute one-use grant bound to the exact loopback address and S256 challenge. The merchant issues a separate login only during successful exchange; raw login tokens never enter redirect URLs or chat. Tests cover replay, cancellation, unknown exchange, callback mismatch, duplicate parameters, identity mismatch and cookie-free callbacks. The callback renders success directly, so it does not depend on Strict cookies during a cross-site redirect chain. The local production sign-in page contains no email or OTP form. The PHP handoff has 23 test-only checks and the website session/callback helper has 17 checks. Production deployment preserves hashes of the H5 entry, its runtime and the original login asset. An anonymous live probe verifies the website page, JS MIME types, protected approval endpoint and cancellation without customer login, token issuance, order or payment. This is a website-to-local handoff, not the hosted OAuth/MCP service needed for public Grok Bot integration.
 
 ## Reviewer walkthrough draft
 

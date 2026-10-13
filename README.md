@@ -2,7 +2,7 @@
 
 Buy travel eSIMs through the existing MZ MALL website APIs: search plans, sign in privately, create an unpaid order, approve a balance payment or secure card checkout, check payment, and retrieve paid installation QR codes. This is a **local Cursor plugin**, requiring Node.js 24+. It is not a hosted Grok Bot connector or an approved marketplace listing.
 
-The first release targets Cursor IDE. Node runs the connector on the customer's computer. The plugin does not ship supplier credentials, merchant payment secrets or shared customer tokens. It has no access to project files, shell execution tools or browser passwords. Sign-in uses a private loopback page; entering a new email may register an account on the existing website.
+The release targets Cursor IDE. Node runs the connector on the customer's computer. The plugin does not ship supplier credentials, merchant payment secrets or shared customer tokens. It has no access to project files, shell execution tools or browser passwords. Version 0.2.0 reuses the existing MZ MALL customer website sign-in (email or supported social login) and its existing return route. A website confirmation page asks the customer to allow account connection. The loopback service receives a one-use, S256-bound callback; it no longer asks for email or OTP. Entering a new email on the website may register an account under that website's existing signup flow.
 
 ## Install and test
 
@@ -35,7 +35,9 @@ Paid cancellations/refunds are not supported by this API connector. Merchant sup
 
 ## Data and security
 
-The default vault is `~/.mzmall-esim`, outside the plugin repository. It holds the connected account token, encrypted order journal and one-use approvals. AES-GCM protects records; the key is held in the same OS-user directory. Protect that directory with OS permissions; encryption is not a defense against another process already running as the same OS user. No credentials are logged or returned to the agent. Do not share the vault, include it in a public ZIP, or configure a shared merchant/customer account. The local portal binds only to 127.0.0.1 and enforces session cookies, CSRF and Host/Origin checks.
+The default vault is `~/.mzmall-esim`, outside the plugin repository. It holds the connected account token, encrypted order journal, temporary connection verifier and one-use approvals. AES-GCM protects records; the key is held in the same OS-user directory. Protect that directory with OS permissions; encryption is not a defense against another process already running as the same OS user. No credentials are logged or returned to the agent. Do not share the vault, include it in a public ZIP, or configure a shared merchant/customer account. The local portal binds only to 127.0.0.1 and enforces session cookies, CSRF and Host/Origin checks on local forms. The website callback instead requires the matching state, verifier, expiry and exact callback URL; it needs no local browser cookie. The merchant exchanges its short-lived code for a separate login, so disconnecting the connector does not log out the existing website session.
+
+This website-to-local handoff is **not a public MCP OAuth authorization server**. A hosted Grok Bot connector still needs its own remote transport, supported OAuth client integration and per-customer isolation. The original website login and frontend bundle are reused; they are not part of this public plugin repository.
 
 ## Public submission
 
