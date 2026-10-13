@@ -3,7 +3,7 @@
     "mzmall-esim": {
       "command": "node",
       "args": ["${CURSOR_PLUGIN_ROOT}/dist/index.mjs"],
-      "env": { "MZMALL_ENABLE_PURCHASES": "0", "MZMALL_PLUGIN_VERSION": "0.1.1" }
+      "env": { "MZMALL_ENABLE_PURCHASES": "0", "MZMALL_PLUGIN_VERSION": "0.1.2" }
     }
   }
 }

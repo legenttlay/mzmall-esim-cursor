@@ -33,11 +33,39 @@ test('private sign-in portal rejects unknown session, Host and cross-origin POST
   const redirect = await fetch(portal.accountUrl(), { redirect: 'manual' }), cookie = redirect.headers.get('set-cookie').split(';')[0];
   assert.equal(redirect.status, 303);
   const page = await fetch(portal.base, { headers: { cookie } }); assert.equal(page.status, 200);
-  assert.equal((await page.text()).includes('test-user-token'), false);
-  const bad = await fetch(`${portal.base}/send-code`, { method: 'POST', headers: { cookie, Origin: 'https://evil.test', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'email=buyer%40example.test' });
-  assert.equal(bad.status, 403); assert.equal(f.state.calls.some(c => c.action === 'send_email_code'), false);
+  assert.equal(page.headers.get('referrer-policy'), 'same-origin');
+  const html = await page.text(); assert.equal(html.includes('test-user-token'), false);
+  const csrf = html.match(/name="csrf" value="([a-f0-9]+)"/)[1];
+  for (const origin of ['https://evil.test', 'null', undefined]) {
+    const bad = await fetch(`${portal.base}/send-code`, { method: 'POST', headers: { cookie, ...(origin ? { Origin: origin } : {}), 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email: 'buyer@example.test', csrf }) });
+    assert.equal(bad.status, 403); assert.equal(f.state.calls.some(c => c.action === 'send_email_code'), false);
+  }
+  const badCsrf = await fetch(`${portal.base}/send-code`, { method: 'POST', headers: { cookie, Origin: portal.base }, body: new URLSearchParams({ email: 'buyer@example.test', csrf: 'incorrect' }) });
+  assert.equal(badCsrf.status, 403); assert.equal(f.state.calls.some(c => c.action === 'send_email_code'), false);
   const hostStatus = await new Promise((resolve, reject) => {
     const req = request(portal.base, { headers: { cookie, Host: 'evil.test' } }, res => { res.resume(); resolve(res.statusCode); });
     req.on('error', reject); req.end();
   }); assert.equal(hostStatus, 403);
+});
+
+test('private sign-in portal accepts same-origin email and OTP forms with a valid session', async t => {
+  const f = fixture(), portal = await startPortal({ api: f.api, store: f.store, service: f.service });
+  f.store.delete('account', 'current');
+  t.after(async () => { await new Promise(r => portal.server.close(r)); f.close(); });
+  const redirect = await fetch(portal.accountUrl(), { redirect: 'manual' });
+  assert.equal(redirect.headers.get('referrer-policy'), 'no-referrer');
+  const cookie = redirect.headers.get('set-cookie').split(';')[0];
+  const page = await fetch(portal.base, { headers: { cookie } });
+  assert.equal(page.headers.get('referrer-policy'), 'same-origin');
+  const csrf = (await page.text()).match(/name="csrf" value="([a-f0-9]+)"/)[1];
+  const headers = { cookie, Origin: portal.base, 'Content-Type': 'application/x-www-form-urlencoded' };
+  const code = await fetch(`${portal.base}/send-code`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', csrf }) });
+  assert.equal(code.status, 200); assert.match(await code.text(), /Check your email/);
+  assert.equal(f.state.calls.filter(c => c.action === 'send_email_code').length, 1);
+  const login = await fetch(`${portal.base}/login`, { method: 'POST', headers, body: new URLSearchParams({ email: 'buyer@example.test', code: '123456', csrf }) });
+  assert.equal(login.status, 200);
+  const connected = await login.text(); assert.match(connected, /Account connected/);
+  assert.equal(connected.includes('test-login-token'), false);
+  assert.equal(f.store.get('account', 'current').token, 'test-login-token');
+  assert.equal(f.state.count, 0); assert.equal(f.state.payCalls, 0);
 });

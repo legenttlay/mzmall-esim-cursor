@@ -3,14 +3,16 @@ import { randomBytes, createHash } from 'node:crypto';
 
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const quoteHash = q => createHash('sha256').update(JSON.stringify(q)).digest('hex');
-export async function startPortal({ api, store, service }) {
+export async function startPortal({ api, store, service, port = 0 }) {
   const nonce = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex');
   let base;
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM · Private account connection</p><h1>${escape(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
   const loginForm = email => form('/send-code', '<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>', 'Send verification code') + form('/login', `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape(email)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, 'Connect my account') + '<p class="muted">A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user’s local plugin.</p>';
   const server = createServer(async (req, res) => {
-    const send = (status, html) => { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(html); };
+    // Native form POSTs need their real Origin for the strict check below.
+    // same-origin suppresses referrers to other sites without turning this Origin into null.
+    const send = (status, html) => { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'same-origin', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }); res.end(html); };
     try {
       if (req.headers.host !== new URL(base).host) return send(403, 'Forbidden host');
       const u = new URL(req.url, base), cookies = String(req.headers.cookie ?? '').split(';').map(s => s.trim());
@@ -74,7 +76,7 @@ export async function startPortal({ api, store, service }) {
       return send(404, 'Not found');
     } catch (e) { return send(400, shell('Unable to continue', `<p>${escape(e.message)}</p>`)); }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
   return { server, base, accountUrl: () => `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }

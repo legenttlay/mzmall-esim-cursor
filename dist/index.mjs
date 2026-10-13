@@ -41467,7 +41467,7 @@ import { createServer } from "node:http";
 import { randomBytes as randomBytes2, createHash as createHash2 } from "node:crypto";
 var escape2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var quoteHash = (q) => createHash2("sha256").update(JSON.stringify(q)).digest("hex");
-async function startPortal({ api, store, service }) {
+async function startPortal({ api, store, service, port = 0 }) {
   const nonce = randomBytes2(32).toString("hex"), csrf = randomBytes2(32).toString("hex");
   let base;
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
@@ -41475,7 +41475,7 @@ async function startPortal({ api, store, service }) {
   const loginForm = (email3) => form("/send-code", '<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>', "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
   const server = createServer(async (req, res) => {
     const send = (status, html) => {
-      res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
+      res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
       res.end(html);
     };
     try {
@@ -41557,14 +41557,17 @@ async function startPortal({ api, store, service }) {
       return send(400, shell("Unable to continue", `<p>${escape2(e.message)}</p>`));
     }
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
   base = `http://127.0.0.1:${server.address().port}`;
   return { server, base, accountUrl: () => `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.1.1" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.1.2" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
