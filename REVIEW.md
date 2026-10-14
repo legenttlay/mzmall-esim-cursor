@@ -1,4 +1,4 @@
-# Review evidence — version 0.2.1
+# Review evidence — version 0.2.2
 
 This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; the customer subsequently completed website sign-in and consent. A read-only merchant account check confirmed the saved identity; no real order or payment was made.
 
@@ -59,3 +59,7 @@ Cursor format is used. ChatGPT/OpenAI submission-specific schema fields and revi
 ## 0.2.1 return and conversation continuation
 
 The connected callback and account-status page provide a prominent Return to Cursor button and a manual fallback prompt. Cursor’s documented prompt deeplink pre-fills a message for the customer to review and send; it does not guarantee the previous chat or execute a message automatically. No token, OTP, email or balance is placed in the deeplink. A connection can retain its shopping draft for 24 hours, accessible only after merchant identity verification for the same account. `get_esim_account(connection_id, wait_seconds=30)` briefly waits for that exact login so the agent can continue the original request. Tests verify callback wake-up, selection recovery without orders/payments, other-account rejection, cancelled/expired/interrupted results, and an expired token never showing a successful connection. The same ten tools remain. The automatic full Cursor chat experience and a real payment still require a customer walkthrough.
+
+## 0.2.2 compact success dialog
+
+Callback success and the connected landing page show a responsive, keyboard-accessible success dialog with one return action and a manual fallback. Account details and disconnect controls live at the separate cookie-protected `/account` page. Existing callback tests verify that the dialog omits email, balance, disconnect forms and tokens, while the management page retains its session guard and disconnect form. The same 32 tests remain. Native host-managed remote OAuth is still a future production integration; changing the dialog does not implement it.

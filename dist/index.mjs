@@ -41532,8 +41532,46 @@ var WebsiteAccountConnection = class {
   }
 };
 
+// server/connection-view.mjs
+var escape2 = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function connectionSuccessPage(connectionId) {
+  const reference = /^[a-f0-9]{64}$/.test(connectionId ?? "") ? `\uFF08connection_id=${connectionId}\uFF09` : "";
+  const prompt = `\u6211\u7684 MZ MALL eSIM \u8D26\u53F7\u5DF2\u8FDE\u63A5\u3002\u8BF7\u8C03\u7528 get_esim_account${reference}\uFF0C\u63A5\u7740\u6211\u521A\u624D\u7684\u9700\u6C42\u7EE7\u7EED\uFF1B\u4FDD\u7559\u5DF2\u9009\u5957\u9910\uFF0C\u5148\u5411\u6211\u786E\u8BA4\u5546\u54C1\u3001\u6570\u91CF\u3001\u91D1\u989D\u548C\u4ED8\u6B3E\u65B9\u5F0F\u3002\u767B\u5F55\u4E0D\u4EE3\u8868\u540C\u610F\u4ED8\u6B3E\uFF1B\u5982\u679C\u6211\u4E4B\u524D\u53EA\u8981\u6C42\u8FDE\u63A5\u6216\u67E5\u8BE2\uFF0C\u8BF7\u4E0D\u8981\u4E0B\u5355\u3002`;
+  const returnUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`;
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>\u8D26\u53F7\u8FDE\u63A5\u6210\u529F \xB7 MZ MALL eSIM</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#172b45;font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+    .brand{padding:28px 32px;color:#2863e5;font-weight:700;font-size:18px;letter-spacing:.02em}.brand span{color:#6b7c93;font-weight:500;margin-left:8px}
+    .overlay{position:fixed;inset:0;background:rgba(23,43,69,.26);display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+    .dialog{width:100%;max-width:420px;max-height:calc(100vh - 48px);overflow:auto;background:#fff;border:1px solid #e5ebf2;border-radius:20px;padding:36px 32px 28px;text-align:center;box-shadow:0 24px 80px rgba(23,43,69,.18)}
+    .check{display:grid;place-items:center;width:60px;height:60px;margin:0 auto 20px;border-radius:50%;background:#e8f7ef;color:#15945f;font-size:34px;line-height:1}
+    h1{font-size:24px;line-height:1.4;letter-spacing:-.02em;margin:0 0 10px}p{margin:0;color:#61738c}.return-button{display:block;background:#2863e5;color:#fff;text-decoration:none;border-radius:10px;padding:13px 18px;margin:26px 0 18px;font-weight:600}.return-button:hover{background:#1d50c5}.return-button:focus-visible{outline:3px solid #96b8ff;outline-offset:4px}.fallback{font-size:13px;line-height:1.8}.resume-hint{font-size:12px;line-height:1.8;color:#8290a3;margin-top:8px}
+    @media(max-width:480px){.overlay{padding:20px}.dialog{padding:30px 24px 24px}.brand{padding:24px}h1{font-size:22px}}
+  </style>
+</head>
+<body>
+  <header class="brand" aria-hidden="true" inert>MZ MALL <span>eSIM</span></header>
+  <main class="overlay">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-describedby="connection-description">
+      <div class="check" aria-hidden="true">\u2713</div>
+      <h1 id="connection-title">\u8D26\u53F7\u8FDE\u63A5\u6210\u529F</h1>
+      <p id="connection-description">\u8FD4\u56DE Cursor\uFF0C\u7EE7\u7EED\u521A\u624D\u7684 eSIM \u9700\u6C42\u3002</p>
+      <a class="return-button" href="${escape2(returnUrl)}" autofocus>\u8FD4\u56DE Cursor \u7EE7\u7EED</a>
+      <p class="fallback">\u672A\u80FD\u6253\u5F00\uFF1F\u8BF7\u624B\u52A8\u5207\u56DE Cursor\u3002</p>
+      <p class="resume-hint">\u804A\u5929\u5DF2\u6682\u505C\u65F6\uFF0C\u53D1\u9001\u201C\u8D26\u53F7\u5DF2\u8FDE\u63A5\uFF0C\u8BF7\u7EE7\u7EED\u521A\u624D\u7684\u9700\u6C42\u201D\u3002</p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 // server/portal.mjs
-var escape2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var escape3 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var quoteHash = (q) => createHash3("sha256").update(JSON.stringify(q)).digest("hex");
 async function startPortal({ api, store, service, port = 0, websiteLogin = false }) {
   const nonce = randomBytes3(32).toString("hex"), csrf = randomBytes3(32).toString("hex");
@@ -41541,15 +41579,9 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
   let loginEmail = "", loginNotice = "";
   const sendCooldowns = /* @__PURE__ */ new Map();
   const websiteConnection = websiteLogin ? new WebsiteAccountConnection({ api, store }) : null;
-  const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
+  const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape3(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape3(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
-  const loginForm = (email3) => form("/send-code", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label>`, "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
-  const resumeBody = (connectionId) => {
-    const reference = /^[a-f0-9]{64}$/.test(connectionId ?? "") ? `\uFF08connection_id=${connectionId}\uFF09` : "";
-    const prompt = `\u6211\u7684 MZ MALL eSIM \u8D26\u53F7\u5DF2\u8FDE\u63A5\u3002\u8BF7\u8C03\u7528 get_esim_account${reference}\uFF0C\u63A5\u7740\u6211\u521A\u624D\u7684\u9700\u6C42\u7EE7\u7EED\uFF1B\u4FDD\u7559\u5DF2\u9009\u5957\u9910\uFF0C\u5148\u5411\u6211\u786E\u8BA4\u5546\u54C1\u3001\u6570\u91CF\u3001\u91D1\u989D\u548C\u4ED8\u6B3E\u65B9\u5F0F\u3002\u767B\u5F55\u4E0D\u4EE3\u8868\u540C\u610F\u4ED8\u6B3E\uFF1B\u5982\u679C\u6211\u4E4B\u524D\u53EA\u8981\u6C42\u8FDE\u63A5\u6216\u67E5\u8BE2\uFF0C\u8BF7\u4E0D\u8981\u4E0B\u5355\u3002`;
-    const returnUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`;
-    return `<p><strong>\u2713 \u8D26\u53F7\u5DF2\u8FDE\u63A5\uFF0C\u53EF\u4EE5\u8FD4\u56DE Cursor \u7EE7\u7EED\u3002</strong></p><p>\u6B63\u5728\u7B49\u5F85\u767B\u5F55\u7684\u804A\u5929\u53EF\u4EE5\u7EE7\u7EED\u68C0\u67E5\u8D26\u53F7\u72B6\u6001\u3002\u8BF7\u56DE\u5230\u539F\u804A\u5929\u786E\u8BA4\u5957\u9910\u548C\u91D1\u989D\uFF1B\u8FDE\u63A5\u8D26\u53F7\u672C\u8EAB\u6CA1\u6709\u4E0B\u5355\u6216\u6263\u6B3E\u3002</p><p><a class="return-button" style="display:inline-block;background:#164aaf;color:white;padding:14px 22px;border-radius:8px;text-decoration:none" href="${escape2(returnUrl)}">\u8FD4\u56DE Cursor \u7EE7\u7EED</a></p><p class="muted">\u6D4F\u89C8\u5668\u53EF\u80FD\u8BE2\u95EE\u662F\u5426\u6253\u5F00 Cursor\u3002\u8FD4\u56DE\u6309\u94AE\u4F1A\u9884\u586B\u7EE7\u7EED\u8BF7\u6C42\uFF0C\u8BF7\u68C0\u67E5\u540E\u53D1\u9001\u3002\u5982\u679C\u6253\u5F00\u4E86\u65B0\u804A\u5929\uFF0C\u63D2\u4EF6\u53EF\u4EE5\u6062\u590D\u672C\u6B21\u767B\u5F55\u524D\u4FDD\u5B58\u7684\u9700\u6C42\u3002</p><details><summary>\u6CA1\u6709\u6253\u5F00\uFF1F\u56DE\u5230\u539F\u804A\u5929\u53D1\u9001\u8FD9\u6BB5\u8BDD</summary><textarea readonly rows="5" style="box-sizing:border-box;width:100%;padding:10px;margin-top:12px" aria-label="\u7EE7\u7EED\u804A\u5929\u7684\u5185\u5BB9">${escape2(prompt)}</textarea></details>`;
-  };
+  const loginForm = (email3) => form("/send-code", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape3(email3)}"></label>`, "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape3(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
   const server = createServer(async (req, res) => {
     const send = (status, html) => {
       res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
@@ -41566,26 +41598,27 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
         const pending = store.get("website-connection", u.searchParams.get("state"));
         const result = await websiteConnection.complete(u.searchParams, `${base}/account-callback`);
         if (result.cancelled) return send(200, shell("Connection cancelled", "<p>No account was connected. Return to Cursor when you want to connect.</p>"));
-        return send(200, shell("Account connected \xB7 \u8D26\u53F7\u5DF2\u8FDE\u63A5", resumeBody(pending?.connection_id) + `<p><a href="/?session=${nonce}">\u67E5\u770B\u8FDE\u63A5\u72B6\u6001</a></p>`));
+        return send(200, connectionSuccessPage(pending?.connection_id));
       }
       if (req.method === "GET" && u.searchParams.get("session") === nonce) {
         res.writeHead(303, { Location: u.pathname + (u.searchParams.has("purchase") ? `?purchase=${encodeURIComponent(u.searchParams.get("purchase"))}&method=${encodeURIComponent(u.searchParams.get("method") ?? "balance")}` : ""), "Set-Cookie": `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
         return res.end();
       }
       if (!cookies.includes(`${cookieName}=${nonce}`)) return send(403, shell("Open from Cursor", "<p>This page has no matching login session. Return to Cursor and ask it to connect your MZ MALL eSIM account, then open the new link it returns.</p>"));
-      if (req.method === "GET" && u.pathname === "/") {
+      if (req.method === "GET" && (u.pathname === "/" || websiteConnection && u.pathname === "/account")) {
         let connected = "", accountIsValid = false;
         if (store.get("account", "current")) {
           try {
             const a = await service.auth();
             accountIsValid = true;
-            connected = `<p>Connected account: ${escape2(a.email)} \xB7 Balance: ${a.balance} MMK.</p>` + form("/disconnect", "", "Disconnect");
+            connected = websiteConnection ? `<p>\u5F53\u524D\u8D26\u53F7\uFF1A${escape3(a.email)}</p><p>\u8D26\u53F7\u4F59\u989D\uFF1A${a.balance} MMK</p>` + form("/disconnect", "", "\u65AD\u5F00\u8FDE\u63A5") : `<p>Connected account: ${escape3(a.email)} \xB7 Balance: ${a.balance} MMK.</p>` + form("/disconnect", "", "Disconnect");
           } catch {
             connected = "<p>Your session expired. Sign in again.</p>";
           }
         }
-        if (websiteConnection) return send(200, shell(accountIsValid ? "Account connected \xB7 \u8D26\u53F7\u5DF2\u8FDE\u63A5" : "Use your MZ MALL website account", connected + (accountIsValid ? resumeBody(store.get("account", "current")?.connection_id) : '<p>\u8BF7\u4F7F\u7528\u5DF2\u6709\u7684 MZ MALL \u7F51\u7AD9\u8D26\u53F7\u767B\u5F55\uFF0C\u5E76\u786E\u8BA4\u5141\u8BB8\u8FDE\u63A5\u3002</p><p><a href="/website-login">\u4F7F\u7528\u7F51\u7AD9\u8D26\u53F7\u8FDE\u63A5</a></p>')));
-        return send(200, shell("Connect your eSIM account", connected + (loginNotice ? `<p role="status">${escape2(loginNotice)}</p>` : "") + loginForm(loginEmail)));
+        if (websiteConnection && accountIsValid && u.pathname === "/") return send(200, connectionSuccessPage(store.get("account", "current")?.connection_id));
+        if (websiteConnection) return send(200, shell(accountIsValid ? "\u8D26\u53F7\u7BA1\u7406 \xB7 MZ MALL eSIM" : "Use your MZ MALL website account", connected + (accountIsValid ? '<p><a href="/">\u8FD4\u56DE\u8FDE\u63A5\u6210\u529F\u9875</a></p>' : '<p>\u8BF7\u4F7F\u7528\u5DF2\u6709\u7684 MZ MALL \u7F51\u7AD9\u8D26\u53F7\u767B\u5F55\uFF0C\u5E76\u786E\u8BA4\u5141\u8BB8\u8FDE\u63A5\u3002</p><p><a href="/website-login">\u4F7F\u7528\u7F51\u7AD9\u8D26\u53F7\u8FDE\u63A5</a></p>')));
+        return send(200, shell("Connect your eSIM account", connected + (loginNotice ? `<p role="status">${escape3(loginNotice)}</p>` : "") + loginForm(loginEmail)));
       }
       if (websiteConnection && req.method === "GET" && u.pathname === "/website-login") {
         const url2 = await websiteConnection.begin(base);
@@ -41600,7 +41633,7 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
         if (q.already_paid) return send(200, shell("Already paid", "<p>Return to Cursor and check delivery. Do not pay again.</p>"));
         const ticket = randomBytes3(24).toString("hex");
         store.put("approval-ticket", ticket, { quote: q, hash: quoteHash(q), expires: Date.now() + 12e4 });
-        const body2 = `<p>${escape2(q.product)} \xD7 ${q.quantity}</p><p><strong>${q.total} ${q.currency}</strong> \xB7 ${escape2(method)}</p><p>Delivery email: ${escape2(q.delivery_email)}</p><p>${escape2(q.terms)}</p><p>${method === "card" ? "This approves opening secure card checkout. The final charge requires your authorization in that checkout." : "This authorizes this exact purchase from your MZ MALL account balance."}</p>` + form("/approve", `<input type="hidden" name="ticket" value="${ticket}">`, "Approve this purchase");
+        const body2 = `<p>${escape3(q.product)} \xD7 ${q.quantity}</p><p><strong>${q.total} ${q.currency}</strong> \xB7 ${escape3(method)}</p><p>Delivery email: ${escape3(q.delivery_email)}</p><p>${escape3(q.terms)}</p><p>${method === "card" ? "This approves opening secure card checkout. The final charge requires your authorization in that checkout." : "This authorizes this exact purchase from your MZ MALL account balance."}</p>` + form("/approve", `<input type="hidden" name="ticket" value="${ticket}">`, "Approve this purchase");
         return send(200, shell("Review this purchase", body2));
       }
       if (req.method !== "POST" || req.headers.origin !== base) return send(403, "Forbidden origin");
@@ -41671,7 +41704,7 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
       }
       return send(404, "Not found");
     } catch (e) {
-      return send(400, shell("Unable to continue", `<p>${escape2(e.message)}</p>`));
+      return send(400, shell("Unable to continue", `<p>${escape3(e.message)}</p>`));
     }
   });
   await new Promise((resolve, reject) => {
@@ -41680,12 +41713,12 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
   });
   base = `http://127.0.0.1:${server.address().port}`;
   cookieName = `mz_esim_session_${server.address().port}`;
-  return { server, base, statusUrl: () => `${base}/?session=${nonce}`, accountUrl: (shoppingRequest) => websiteConnection ? websiteConnection.begin(base, shoppingRequest) : `${base}/?session=${nonce}`, connectionStatus: (id) => websiteConnection ? websiteConnection.status(id) : { state: "unknown" }, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
+  return { server, base, statusUrl: () => `${base}/?session=${nonce}`, managementUrl: () => `${base}/account?session=${nonce}`, accountUrl: (shoppingRequest) => websiteConnection ? websiteConnection.begin(base, shoppingRequest) : `${base}/?session=${nonce}`, connectionStatus: (id) => websiteConnection ? websiteConnection.status(id) : { state: "unknown" }, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.2.1" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.2.2" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
@@ -41719,7 +41752,7 @@ function makeServer({ service, portal, store }) {
     }
     const a = await service.auth();
     if (connection && connection.uid !== a.uid) throw new Error("This connection belongs to a different account. Request a new connection for the current customer.");
-    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK", ...connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: "Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay." } : {} };
+    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK", ...portal.managementUrl ? { account_management_url: portal.managementUrl() } : {}, ...connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: "Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay." } : {} };
   });
   tool("prepare_esim_purchase", { description: "Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.", inputSchema: { product_id: positive, quantity: positive.max(30), email: external_exports.string().email().max(254), max_total_mmk: external_exports.number().positive().finite(), request_id: external_exports.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, (args) => service.prepare(args));
   tool("get_esim_payment_quote", { description: "Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.", inputSchema: { purchase_id: id, payment_method: external_exports.enum(["balance", "card"]) }, annotations: { ...read, readOnlyHint: false } }, (args) => service.quote(args.purchase_id, args.payment_method));

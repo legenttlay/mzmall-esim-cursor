@@ -11,7 +11,7 @@ import { EsimService } from './service.mjs';
 import { startPortal, quoteHash } from './portal.mjs';
 
 export function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: 'mzmall-esim', version: '0.2.1' });
+  const server = new McpServer({ name: 'mzmall-esim', version: '0.2.2' });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = z.string().uuid(), positive = z.number().int().positive();
@@ -41,7 +41,7 @@ export function makeServer({ service, portal, store }) {
     }
     const a = await service.auth();
     if (connection && connection.uid !== a.uid) throw new Error('This connection belongs to a different account. Request a new connection for the current customer.');
-    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: 'MMK', ...(connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: 'Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay.' } : {}) };
+    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: 'MMK', ...(portal.managementUrl ? { account_management_url: portal.managementUrl() } : {}), ...(connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: 'Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay.' } : {}) };
   });
   tool('prepare_esim_purchase', { description: 'Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.', inputSchema: { product_id: positive, quantity: positive.max(30), email: z.string().email().max(254), max_total_mmk: z.number().positive().finite(), request_id: z.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, args => service.prepare(args));
   tool('get_esim_payment_quote', { description: 'Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.', inputSchema: { purchase_id: id, payment_method: z.enum(['balance', 'card']) }, annotations: { ...read, readOnlyHint: false } }, args => service.quote(args.purchase_id, args.payment_method));

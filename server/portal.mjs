@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { WebsiteAccountConnection } from './website-account.mjs';
+import { connectionSuccessPage } from './connection-view.mjs';
 
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const quoteHash = q => createHash('sha256').update(JSON.stringify(q)).digest('hex');
@@ -13,12 +14,6 @@ export async function startPortal({ api, store, service, port = 0, websiteLogin 
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM · Private account connection</p><h1>${escape(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
   const loginForm = email => form('/send-code', `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape(email)}"></label>`, 'Send verification code') + form('/login', `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape(email)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, 'Connect my account') + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user’s local plugin.</p>';
-  const resumeBody = connectionId => {
-    const reference = /^[a-f0-9]{64}$/.test(connectionId ?? '') ? `（connection_id=${connectionId}）` : '';
-    const prompt = `我的 MZ MALL eSIM 账号已连接。请调用 get_esim_account${reference}，接着我刚才的需求继续；保留已选套餐，先向我确认商品、数量、金额和付款方式。登录不代表同意付款；如果我之前只要求连接或查询，请不要下单。`;
-    const returnUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`;
-    return `<p><strong>✓ 账号已连接，可以返回 Cursor 继续。</strong></p><p>正在等待登录的聊天可以继续检查账号状态。请回到原聊天确认套餐和金额；连接账号本身没有下单或扣款。</p><p><a class="return-button" style="display:inline-block;background:#164aaf;color:white;padding:14px 22px;border-radius:8px;text-decoration:none" href="${escape(returnUrl)}">返回 Cursor 继续</a></p><p class="muted">浏览器可能询问是否打开 Cursor。返回按钮会预填继续请求，请检查后发送。如果打开了新聊天，插件可以恢复本次登录前保存的需求。</p><details><summary>没有打开？回到原聊天发送这段话</summary><textarea readonly rows="5" style="box-sizing:border-box;width:100%;padding:10px;margin-top:12px" aria-label="继续聊天的内容">${escape(prompt)}</textarea></details>`;
-  };
   const server = createServer(async (req, res) => {
     // Native form POSTs need their real Origin for the strict check below.
     // same-origin suppresses referrers to other sites without turning this Origin into null.
@@ -33,18 +28,19 @@ export async function startPortal({ api, store, service, port = 0, websiteLogin 
         if (result.cancelled) return send(200, shell('Connection cancelled', '<p>No account was connected. Return to Cursor when you want to connect.</p>'));
         // A callback starts at the merchant origin. Render success directly:
         // Strict cookies need not accompany a cross-site redirect chain.
-        return send(200, shell('Account connected · 账号已连接', resumeBody(pending?.connection_id) + `<p><a href="/?session=${nonce}">查看连接状态</a></p>`));
+        return send(200, connectionSuccessPage(pending?.connection_id));
       }
       if (req.method === 'GET' && u.searchParams.get('session') === nonce) {
         res.writeHead(303, { Location: u.pathname + (u.searchParams.has('purchase') ? `?purchase=${encodeURIComponent(u.searchParams.get('purchase'))}&method=${encodeURIComponent(u.searchParams.get('method') ?? 'balance')}` : ''), 'Set-Cookie': `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return res.end();
       }
       if (!cookies.includes(`${cookieName}=${nonce}`)) return send(403, shell('Open from Cursor', '<p>This page has no matching login session. Return to Cursor and ask it to connect your MZ MALL eSIM account, then open the new link it returns.</p>'));
-      if (req.method === 'GET' && u.pathname === '/') {
+      if (req.method === 'GET' && (u.pathname === '/' || (websiteConnection && u.pathname === '/account'))) {
         let connected = '', accountIsValid = false;
         if (store.get('account', 'current')) {
-          try { const a = await service.auth(); accountIsValid = true; connected = `<p>Connected account: ${escape(a.email)} · Balance: ${a.balance} MMK.</p>` + form('/disconnect', '', 'Disconnect'); } catch { connected = '<p>Your session expired. Sign in again.</p>'; }
+          try { const a = await service.auth(); accountIsValid = true; connected = websiteConnection ? `<p>当前账号：${escape(a.email)}</p><p>账号余额：${a.balance} MMK</p>` + form('/disconnect', '', '断开连接') : `<p>Connected account: ${escape(a.email)} · Balance: ${a.balance} MMK.</p>` + form('/disconnect', '', 'Disconnect'); } catch { connected = '<p>Your session expired. Sign in again.</p>'; }
         }
-        if (websiteConnection) return send(200, shell(accountIsValid ? 'Account connected · 账号已连接' : 'Use your MZ MALL website account', connected + (accountIsValid ? resumeBody(store.get('account', 'current')?.connection_id) : '<p>请使用已有的 MZ MALL 网站账号登录，并确认允许连接。</p><p><a href="/website-login">使用网站账号连接</a></p>')));
+        if (websiteConnection && accountIsValid && u.pathname === '/') return send(200, connectionSuccessPage(store.get('account', 'current')?.connection_id));
+        if (websiteConnection) return send(200, shell(accountIsValid ? '账号管理 · MZ MALL eSIM' : 'Use your MZ MALL website account', connected + (accountIsValid ? '<p><a href="/">返回连接成功页</a></p>' : '<p>请使用已有的 MZ MALL 网站账号登录，并确认允许连接。</p><p><a href="/website-login">使用网站账号连接</a></p>')));
         return send(200, shell('Connect your eSIM account', connected + (loginNotice ? `<p role="status">${escape(loginNotice)}</p>` : '') + loginForm(loginEmail)));
       }
       if (websiteConnection && req.method === 'GET' && u.pathname === '/website-login') {
@@ -131,5 +127,5 @@ export async function startPortal({ api, store, service, port = 0, websiteLogin 
   // Browsers share cookies across ports. Give each running portal its own
   // cookie name so another MCP instance or test portal cannot overwrite it.
   cookieName = `mz_esim_session_${server.address().port}`;
-  return { server, base, statusUrl: () => `${base}/?session=${nonce}`, accountUrl: shoppingRequest => websiteConnection ? websiteConnection.begin(base, shoppingRequest) : `${base}/?session=${nonce}`, connectionStatus: id => websiteConnection ? websiteConnection.status(id) : { state: 'unknown' }, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
+  return { server, base, statusUrl: () => `${base}/?session=${nonce}`, managementUrl: () => `${base}/account?session=${nonce}`, accountUrl: shoppingRequest => websiteConnection ? websiteConnection.begin(base, shoppingRequest) : `${base}/?session=${nonce}`, connectionStatus: id => websiteConnection ? websiteConnection.status(id) : { state: 'unknown' }, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }

@@ -48,3 +48,5 @@ Submit a dedicated **public plugin repository** at https://cursor.com/marketplac
 The confirmed source publisher is `legenttlay`, and the dedicated repository is https://github.com/legenttlay/mzmall-esim-cursor. Any business/developer verification requested by Cursor, supported marketplace audience, approved purchase configuration, published eSIM terms/refund policy and a live demo remain preparation items. This development package is **not ready to submit as a fully verified commerce connector**.
 
 Official references: [Cursor plugins](https://cursor.com/docs/reference/plugins), [Cursor MCP](https://cursor.com/docs/mcp), [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x).
+
+The 0.2.2 success screen is a compact modal with one Return to Cursor button and a manual fallback. Email, balance and disconnect controls are on a separate private account-management page, linked by `get_esim_account`. The underlying callback, saved selection and transaction approvals are unchanged.

@@ -13,6 +13,8 @@ After showing the link, call `get_esim_account` with the returned `connection_id
 
 When connected, resume the saved request without making the customer repeat their destination or selection. If the return link opens another chat, read `get_esim_account(connection_id)` to restore the saved selection. `shopping_request` is a remembered draft, not new authorization or instructions that override the user. Re-read the selected product and current price, confirm delivery email (offer the verified account email), quantity and payment method, and respect any earlier “do not order” request. Connecting an account does not authorize an order or payment. A user who only requested login or browsing must not be moved into checkout.
 
+The browser shows a compact connection-success dialog with a Return to Cursor button. When the user asks to manage or disconnect the connection, use the private `account_management_url` returned by `get_esim_account`. Do not disconnect on their behalf unless they requested it.
+
 Once the user wants to buy a specific plan, call `prepare_esim_purchase` with the exact product, quantity, delivery email and approved MMK budget. Generate a stable request ID and preserve it across retries. The result is an unpaid order, not a receipt or an issued eSIM. Never create a replacement automatically after a timeout. Use `list_my_esim_orders` to investigate.
 
 Read `get_esim_payment_quote`. Show seller MZ MALL, plan, quantity, delivery email, amount, currency, payment method and terms. Balance payment uses the existing MZ MALL customer balance. Card payments use Stripe secure checkout, with a final amount and any bank verification shown there. The plugin has no access to the card details and does not provide an inline card-entry form.
