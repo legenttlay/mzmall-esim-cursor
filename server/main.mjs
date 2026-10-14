@@ -4,24 +4,45 @@ import { z } from 'zod';
 import QRCode from 'qrcode';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Store } from './store.mjs';
 import { EsimApi } from './api.mjs';
 import { EsimService } from './service.mjs';
 import { startPortal, quoteHash } from './portal.mjs';
 
 export function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: 'mzmall-esim', version: '0.2.0' });
+  const server = new McpServer({ name: 'mzmall-esim', version: '0.2.1' });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = z.string().uuid(), positive = z.number().int().positive();
   const result = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value });
-  const tool = (name, config, callback) => server.registerTool(name, config, async args => {
-    try { return result(await callback(args)); } catch (e) { return { isError: true, content: [{ type: 'text', text: e.message }] }; }
+  const tool = (name, config, callback) => server.registerTool(name, config, async (args, extra) => {
+    try { return result(await callback(args, extra)); } catch (e) { return { isError: true, content: [{ type: 'text', text: e.message }] }; }
   });
   tool('search_esim_plans', { description: 'Search currently sellable digital eSIM plans by destination, keyword and exact validity. Prices are MMK retail prices. No purchase or login.', inputSchema: { country_code: z.string().regex(/^[A-Z]{2}$/).optional(), keyword: z.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1) }, annotations: read }, args => service.search(args));
   tool('get_esim_plan', { description: 'Read a digital eSIM plan, retail price, coverage, data limits and activation instructions. Does not verify device compatibility.', inputSchema: { product_id: positive }, annotations: read }, args => service.product(args.product_id));
-  tool('connect_esim_account', { description: 'Return a private connection link that reuses the existing MZ MALL website sign-in and asks the customer to allow account connection. Email, verification codes and tokens stay out of chat. Connecting does not create an order or authorize a purchase.', inputSchema: {}, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async () => ({ sign_in_url: await portal.accountUrl() }));
-  tool('get_esim_account', { description: 'Read the connected customer account and MMK balance; does not expose login tokens.', inputSchema: {}, annotations: read }, async () => { const a = await service.auth(); return { account_id: a.uid, email: a.email, balance: a.balance, currency: 'MMK' }; });
+  const shoppingRequest = z.object({ intent: z.enum(['purchase', 'browse', 'connect_only']), country_code: z.string().regex(/^[A-Z]{2}$/).optional(), validity_days: positive.max(730).optional(), product_id: positive.optional(), quantity: positive.max(30).optional(), max_total_mmk: z.number().finite().nonnegative().optional(), data_preference: z.string().max(200).optional() }).strict();
+  tool('connect_esim_account', { description: 'Return a private website login link valid for ten minutes. Preserve the customer’s current eSIM selection in shopping_request. Show the link, then call get_esim_account with its connection_id and wait_seconds=30 to resume this conversation after login. Never put OTPs or tokens in chat. Login does not authorize an order or payment.', inputSchema: { shopping_request: shoppingRequest.optional() }, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async args => {
+    const signInUrl = await portal.accountUrl(args.shopping_request);
+    const connectionId = new URL(signInUrl).searchParams.get('connection');
+    return { sign_in_url: signInUrl, ...(connectionId ? { connection_id: connectionId, expires_in_seconds: 600, next_step: 'Show the customer this link, then wait for the same connection with get_esim_account(connection_id, wait_seconds=30). Continue their original request after connection; obtain transaction approval before any payment.' } : {}) };
+  });
+  tool('get_esim_account', { description: 'Read the connected customer account and MMK balance without tokens. With connection_id, check or briefly wait for that exact website login and restore its shopping_request only for the verified account. A successful login is not payment approval.', inputSchema: { connection_id: z.string().regex(/^[a-f0-9]{64}$/).optional(), wait_seconds: z.number().int().min(0).max(30).default(0) }, annotations: read }, async (args, extra) => {
+    let connection;
+    if (args.wait_seconds && !args.connection_id) throw new Error('Use the connection_id returned by connect_esim_account when waiting for login.');
+    if (args.connection_id) {
+      const deadline = Date.now() + args.wait_seconds * 1000;
+      do {
+        connection = portal.connectionStatus(args.connection_id);
+        if (connection.state !== 'awaiting_login' || Date.now() >= deadline) break;
+        await delay(Math.min(500, deadline - Date.now()), undefined, { signal: extra?.signal });
+      } while (true);
+      if (connection.state !== 'connected') return { connected: false, state: connection.state, next_step: connection.state === 'awaiting_login' ? 'The customer is still signing in. Keep the same selection and connection ID. Continue waiting if they are completing login; do not create another login or an order.' : 'Return to the customer’s original request. A cancelled, expired or unknown connection may need a new sign-in link.' };
+    }
+    const a = await service.auth();
+    if (connection && connection.uid !== a.uid) throw new Error('This connection belongs to a different account. Request a new connection for the current customer.');
+    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: 'MMK', ...(connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: 'Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay.' } : {}) };
+  });
   tool('prepare_esim_purchase', { description: 'Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.', inputSchema: { product_id: positive, quantity: positive.max(30), email: z.string().email().max(254), max_total_mmk: z.number().positive().finite(), request_id: z.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, args => service.prepare(args));
   tool('get_esim_payment_quote', { description: 'Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.', inputSchema: { purchase_id: id, payment_method: z.enum(['balance', 'card']) }, annotations: { ...read, readOnlyHint: false } }, args => service.quote(args.purchase_id, args.payment_method));
   tool('pay_esim_purchase', { description: 'SENSITIVE PURCHASE: pay the customer-approved eSIM order from their balance, or open secure card checkout. Requires fresh approval of the complete details. A checkout link does not prove payment. Unknown outcomes must be checked and never retried blindly. Never ask for card numbers or bank credentials in chat.', inputSchema: { purchase_id: id, payment_method: z.enum(['balance', 'card']) }, annotations: write }, async args => {

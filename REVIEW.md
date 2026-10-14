@@ -1,10 +1,10 @@
-# Review evidence — version 0.2.0
+# Review evidence — version 0.2.1
 
-This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; customer sign-in and consent remain a user handoff.
+This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; the customer subsequently completed website sign-in and consent. A read-only merchant account check confirmed the saved identity; no real order or payment was made.
 
 ## Executed evidence
 
-- `npm test`: **29 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
+- `npm test`: **32 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
 - `node scripts/bundle-smoke.mjs`: bundled Node runtime starts through the actual stdio transport, discovers ten tools, queries the real Thailand catalog (20 grouped products on page 1), and rejects creation while purchases are disabled. No credentials, real order or payment are needed.
 - `npm run smoke:catalog`: real public catalog and product-detail reads. On 2026-10-13 the catalog contained 129 grouped Thailand results; a returned product was ID 2177, retail 2340 MMK. These are a dated observation, not a fixed test expectation or a current advertised price.
 - Dependency install audit: zero reported vulnerabilities at installation. Node SQLite is experimental in the tested Node 24 runtime.
@@ -55,3 +55,7 @@ Card variant: create a secure Stripe checkout, verify that its URL is not report
 5. Enable the intended commerce behavior in the final release only after verification; the current release ships with purchasing disabled.
 
 Cursor format is used. ChatGPT/OpenAI submission-specific schema fields and reviewer addresses are not applicable to this Cursor package.
+
+## 0.2.1 return and conversation continuation
+
+The connected callback and account-status page provide a prominent Return to Cursor button and a manual fallback prompt. Cursor’s documented prompt deeplink pre-fills a message for the customer to review and send; it does not guarantee the previous chat or execute a message automatically. No token, OTP, email or balance is placed in the deeplink. A connection can retain its shopping draft for 24 hours, accessible only after merchant identity verification for the same account. `get_esim_account(connection_id, wait_seconds=30)` briefly waits for that exact login so the agent can continue the original request. Tests verify callback wake-up, selection recovery without orders/payments, other-account rejection, cancelled/expired/interrupted results, and an expired token never showing a successful connection. The same ten tools remain. The automatic full Cursor chat experience and a real payment still require a customer walkthrough.

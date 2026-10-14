@@ -27,6 +27,8 @@ Try:
 
 ## Payment and delivery
 
+Customers can start by asking for an eSIM. The agent selects a suitable plan before login, preserves the selection with the website connection, and briefly waits for that exact connection using `get_esim_account(connection_id, wait_seconds=30)`. When it completes, the same conversation can continue with price confirmation. A manual **Return to Cursor** button uses Cursor's documented prompt deeplink and can restore the saved draft in another chat. The customer reviews and sends that prompt; it cannot automatically send a chat message, guarantee the original chat opens, or authorize a payment. No account tokens, OTPs or delivery email enter the deeplink. Saved selections are available for 24 hours only to the verified connected account.
+
 Balance payments can finish in the agent conversation after explicit host elicitation, or a private browser approval if the host lacks elicitation. Card payments require Stripe's secure checkout and any bank authentication; the connector resumes with payment verification and QR delivery. **Inline card payment in Cursor chat has not been implemented or verified.** Card quotes include a CNY estimate; Stripe checkout displays the final amount before customer authorization. No card details enter a tool argument.
 
 Only the merchant-confirmed `is_pay` result counts as paid. QR delivery requires paid status and valid installation codes for every ordered card. Payment, fulfillment, installation and network activation are separate states. Never automatically retry an unknown payment outcome. The journal persists attempts across process restarts.

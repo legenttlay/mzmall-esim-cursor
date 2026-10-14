@@ -3,11 +3,11 @@ import { randomBytes, createHash } from 'node:crypto';
 const hex = value => /^[a-f0-9]{64}$/.test(String(value ?? ''));
 export class WebsiteAccountConnection {
   constructor({ api, store, now = () => Date.now() }) { Object.assign(this, { api, store, now }); }
-  async begin(base) {
+  async begin(base, shoppingRequest) {
     const callback = new URL('/account-callback', base);
     if (callback.protocol !== 'http:' || callback.hostname !== '127.0.0.1' || !callback.port) throw new Error('Invalid local callback');
     const state = randomBytes(32).toString('hex'), verifier = randomBytes(32).toString('base64url');
-    const record = { verifier, callback_url: callback.href, expires: this.now() + 600000, status: 'starting' };
+    const record = { verifier, callback_url: callback.href, expires: this.now() + 600000, status: 'starting', ...(shoppingRequest ? { shopping_request: shoppingRequest } : {}) };
     this.store.put('website-connection', state, record);
     const started = await this.api.call('agent_connect_start', {
       redirect_uri: callback.href, state, code_challenge: createHash('sha256').update(verifier).digest('base64url'),
@@ -18,7 +18,15 @@ export class WebsiteAccountConnection {
         || [...url.searchParams.keys()].some(k => k !== 'connection') || url.searchParams.getAll('connection').length !== 1) throw new Error('Invalid website connection link');
     record.connection_id = started.connection_id; record.status = 'ready';
     this.store.put('website-connection', state, record);
+    this.store.put('website-connection-result', started.connection_id, { state: 'awaiting_login', expires: record.expires });
     return url.href;
+  }
+  status(id) {
+    if (!hex(id)) throw new Error('Invalid account connection ID');
+    const result = this.store.get('website-connection-result', id);
+    if (!result) return { state: 'unknown' };
+    if (result.expires <= this.now()) return { state: 'expired' };
+    return result;
   }
   async complete(params, callbackUrl) {
     const state = params.get('state');
@@ -27,19 +35,26 @@ export class WebsiteAccountConnection {
       const record = this.store.get('website-connection', state);
       if (!record || record.expires <= this.now() || record.callback_url !== callbackUrl || record.status !== 'ready') throw new Error('Account connection expired or interrupted. Request a new link from Cursor.');
       if (params.get('error') === 'access_denied' && !params.has('code') && params.getAll('error').length === 1) {
+        this.store.put('website-connection-result', record.connection_id, { state: 'cancelled', expires: record.expires });
         this.store.delete('website-connection', state);
         return { connected: false, cancelled: true };
       }
       const code = params.get('code');
       if (!hex(code) || params.getAll('code').length !== 1 || params.has('error')) throw new Error('Invalid account connection callback');
       record.status = 'exchange_started'; this.store.put('website-connection', state, record);
-      const login = await this.api.call('agent_connect_exchange', { code, code_verifier: record.verifier, redirect_uri: record.callback_url }, { write: true });
-      if (!login.token || !Number.isSafeInteger(Number(login.uid)) || Number(login.uid) < 1) throw new Error('Account connection failed');
-      const verified = await this.api.call('user_info', {}, { token: login.token });
-      if (Number(verified.uid) !== Number(login.uid)) throw new Error('Account connection identity did not match');
-      this.store.put('account', 'current', { token: login.token, uid: Number(verified.uid), expire_time: login.expire_time });
-      this.store.delete('website-connection', state);
-      return { connected: true };
+      try {
+        const login = await this.api.call('agent_connect_exchange', { code, code_verifier: record.verifier, redirect_uri: record.callback_url }, { write: true });
+        if (!login.token || !Number.isSafeInteger(Number(login.uid)) || Number(login.uid) < 1) throw new Error('Account connection failed');
+        const verified = await this.api.call('user_info', {}, { token: login.token });
+        if (Number(verified.uid) !== Number(login.uid)) throw new Error('Account connection identity did not match');
+        this.store.put('account', 'current', { token: login.token, uid: Number(verified.uid), expire_time: login.expire_time, connection_id: record.connection_id });
+        this.store.put('website-connection-result', record.connection_id, { state: 'connected', uid: Number(verified.uid), expires: this.now() + 86400000, ...(record.shopping_request ? { shopping_request: record.shopping_request } : {}) });
+        this.store.delete('website-connection', state);
+        return { connected: true };
+      } catch (e) {
+        this.store.put('website-connection-result', record.connection_id, { state: 'interrupted', expires: record.expires });
+        throw e;
+      }
     });
   }
 }

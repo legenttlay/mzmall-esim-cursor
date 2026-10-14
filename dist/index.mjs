@@ -41129,6 +41129,7 @@ var StdioServerTransport = class {
 var import_qrcode = __toESM(require_lib(), 1);
 import { homedir } from "node:os";
 import { join as join2 } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 // server/store.mjs
 import { DatabaseSync } from "node:sqlite";
@@ -41473,11 +41474,11 @@ var WebsiteAccountConnection = class {
   constructor({ api, store, now = () => Date.now() }) {
     Object.assign(this, { api, store, now });
   }
-  async begin(base) {
+  async begin(base, shoppingRequest) {
     const callback = new URL("/account-callback", base);
     if (callback.protocol !== "http:" || callback.hostname !== "127.0.0.1" || !callback.port) throw new Error("Invalid local callback");
     const state = randomBytes2(32).toString("hex"), verifier = randomBytes2(32).toString("base64url");
-    const record2 = { verifier, callback_url: callback.href, expires: this.now() + 6e5, status: "starting" };
+    const record2 = { verifier, callback_url: callback.href, expires: this.now() + 6e5, status: "starting", ...shoppingRequest ? { shopping_request: shoppingRequest } : {} };
     this.store.put("website-connection", state, record2);
     const started = await this.api.call("agent_connect_start", {
       redirect_uri: callback.href,
@@ -41489,7 +41490,15 @@ var WebsiteAccountConnection = class {
     record2.connection_id = started.connection_id;
     record2.status = "ready";
     this.store.put("website-connection", state, record2);
+    this.store.put("website-connection-result", started.connection_id, { state: "awaiting_login", expires: record2.expires });
     return url2.href;
+  }
+  status(id) {
+    if (!hex3(id)) throw new Error("Invalid account connection ID");
+    const result = this.store.get("website-connection-result", id);
+    if (!result) return { state: "unknown" };
+    if (result.expires <= this.now()) return { state: "expired" };
+    return result;
   }
   async complete(params, callbackUrl) {
     const state = params.get("state");
@@ -41498,6 +41507,7 @@ var WebsiteAccountConnection = class {
       const record2 = this.store.get("website-connection", state);
       if (!record2 || record2.expires <= this.now() || record2.callback_url !== callbackUrl || record2.status !== "ready") throw new Error("Account connection expired or interrupted. Request a new link from Cursor.");
       if (params.get("error") === "access_denied" && !params.has("code") && params.getAll("error").length === 1) {
+        this.store.put("website-connection-result", record2.connection_id, { state: "cancelled", expires: record2.expires });
         this.store.delete("website-connection", state);
         return { connected: false, cancelled: true };
       }
@@ -41505,13 +41515,19 @@ var WebsiteAccountConnection = class {
       if (!hex3(code) || params.getAll("code").length !== 1 || params.has("error")) throw new Error("Invalid account connection callback");
       record2.status = "exchange_started";
       this.store.put("website-connection", state, record2);
-      const login = await this.api.call("agent_connect_exchange", { code, code_verifier: record2.verifier, redirect_uri: record2.callback_url }, { write: true });
-      if (!login.token || !Number.isSafeInteger(Number(login.uid)) || Number(login.uid) < 1) throw new Error("Account connection failed");
-      const verified = await this.api.call("user_info", {}, { token: login.token });
-      if (Number(verified.uid) !== Number(login.uid)) throw new Error("Account connection identity did not match");
-      this.store.put("account", "current", { token: login.token, uid: Number(verified.uid), expire_time: login.expire_time });
-      this.store.delete("website-connection", state);
-      return { connected: true };
+      try {
+        const login = await this.api.call("agent_connect_exchange", { code, code_verifier: record2.verifier, redirect_uri: record2.callback_url }, { write: true });
+        if (!login.token || !Number.isSafeInteger(Number(login.uid)) || Number(login.uid) < 1) throw new Error("Account connection failed");
+        const verified = await this.api.call("user_info", {}, { token: login.token });
+        if (Number(verified.uid) !== Number(login.uid)) throw new Error("Account connection identity did not match");
+        this.store.put("account", "current", { token: login.token, uid: Number(verified.uid), expire_time: login.expire_time, connection_id: record2.connection_id });
+        this.store.put("website-connection-result", record2.connection_id, { state: "connected", uid: Number(verified.uid), expires: this.now() + 864e5, ...record2.shopping_request ? { shopping_request: record2.shopping_request } : {} });
+        this.store.delete("website-connection", state);
+        return { connected: true };
+      } catch (e) {
+        this.store.put("website-connection-result", record2.connection_id, { state: "interrupted", expires: record2.expires });
+        throw e;
+      }
     });
   }
 };
@@ -41528,6 +41544,12 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
   const shell = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escape2(title)}</title><style>body{font:16px system-ui;background:#f4f6fb;color:#16253c;margin:0;padding:32px}main{max-width:580px;margin:auto;background:white;border-radius:16px;padding:28px}h1{font-size:24px}label{display:block;margin-top:16px}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab5c3;border-radius:8px}button{background:#164aaf;color:white;border:0;border-radius:8px;padding:12px 18px;margin-top:16px;cursor:pointer}p{line-height:1.6}.muted{color:#526174}a{color:#164aaf}</style><main><p class="muted">MZ MALL eSIM \xB7 Private account connection</p><h1>${escape2(title)}</h1>${body}</main></html>`;
   const form = (action, fields, label) => `<form method="post" action="${action}"><input type="hidden" name="csrf" value="${csrf}">${fields}<button>${label}</button></form>`;
   const loginForm = (email3) => form("/send-code", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label>`, "Send verification code") + form("/login", `<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" value="${escape2(email3)}"></label><label>Verification code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required maxlength="6"></label>`, "Connect my account") + '<p class="muted">Already received a code? Enter the latest code above; you do not need to send another. A new email may create a website account. Verification codes and login tokens stay out of Cursor chat. Your account is connected only to this OS user\u2019s local plugin.</p>';
+  const resumeBody = (connectionId) => {
+    const reference = /^[a-f0-9]{64}$/.test(connectionId ?? "") ? `\uFF08connection_id=${connectionId}\uFF09` : "";
+    const prompt = `\u6211\u7684 MZ MALL eSIM \u8D26\u53F7\u5DF2\u8FDE\u63A5\u3002\u8BF7\u8C03\u7528 get_esim_account${reference}\uFF0C\u63A5\u7740\u6211\u521A\u624D\u7684\u9700\u6C42\u7EE7\u7EED\uFF1B\u4FDD\u7559\u5DF2\u9009\u5957\u9910\uFF0C\u5148\u5411\u6211\u786E\u8BA4\u5546\u54C1\u3001\u6570\u91CF\u3001\u91D1\u989D\u548C\u4ED8\u6B3E\u65B9\u5F0F\u3002\u767B\u5F55\u4E0D\u4EE3\u8868\u540C\u610F\u4ED8\u6B3E\uFF1B\u5982\u679C\u6211\u4E4B\u524D\u53EA\u8981\u6C42\u8FDE\u63A5\u6216\u67E5\u8BE2\uFF0C\u8BF7\u4E0D\u8981\u4E0B\u5355\u3002`;
+    const returnUrl = `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(prompt)}`;
+    return `<p><strong>\u2713 \u8D26\u53F7\u5DF2\u8FDE\u63A5\uFF0C\u53EF\u4EE5\u8FD4\u56DE Cursor \u7EE7\u7EED\u3002</strong></p><p>\u6B63\u5728\u7B49\u5F85\u767B\u5F55\u7684\u804A\u5929\u53EF\u4EE5\u7EE7\u7EED\u68C0\u67E5\u8D26\u53F7\u72B6\u6001\u3002\u8BF7\u56DE\u5230\u539F\u804A\u5929\u786E\u8BA4\u5957\u9910\u548C\u91D1\u989D\uFF1B\u8FDE\u63A5\u8D26\u53F7\u672C\u8EAB\u6CA1\u6709\u4E0B\u5355\u6216\u6263\u6B3E\u3002</p><p><a class="return-button" style="display:inline-block;background:#164aaf;color:white;padding:14px 22px;border-radius:8px;text-decoration:none" href="${escape2(returnUrl)}">\u8FD4\u56DE Cursor \u7EE7\u7EED</a></p><p class="muted">\u6D4F\u89C8\u5668\u53EF\u80FD\u8BE2\u95EE\u662F\u5426\u6253\u5F00 Cursor\u3002\u8FD4\u56DE\u6309\u94AE\u4F1A\u9884\u586B\u7EE7\u7EED\u8BF7\u6C42\uFF0C\u8BF7\u68C0\u67E5\u540E\u53D1\u9001\u3002\u5982\u679C\u6253\u5F00\u4E86\u65B0\u804A\u5929\uFF0C\u63D2\u4EF6\u53EF\u4EE5\u6062\u590D\u672C\u6B21\u767B\u5F55\u524D\u4FDD\u5B58\u7684\u9700\u6C42\u3002</p><details><summary>\u6CA1\u6709\u6253\u5F00\uFF1F\u56DE\u5230\u539F\u804A\u5929\u53D1\u9001\u8FD9\u6BB5\u8BDD</summary><textarea readonly rows="5" style="box-sizing:border-box;width:100%;padding:10px;margin-top:12px" aria-label="\u7EE7\u7EED\u804A\u5929\u7684\u5185\u5BB9">${escape2(prompt)}</textarea></details>`;
+  };
   const server = createServer(async (req, res) => {
     const send = (status, html) => {
       res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "same-origin", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
@@ -41541,9 +41563,10 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
       if (req.headers.host !== new URL(base).host) return send(403, "Forbidden host");
       const u = new URL(req.url, base), cookies = String(req.headers.cookie ?? "").split(";").map((s) => s.trim());
       if (websiteConnection && req.method === "GET" && u.pathname === "/account-callback") {
+        const pending = store.get("website-connection", u.searchParams.get("state"));
         const result = await websiteConnection.complete(u.searchParams, `${base}/account-callback`);
         if (result.cancelled) return send(200, shell("Connection cancelled", "<p>No account was connected. Return to Cursor when you want to connect.</p>"));
-        return send(200, shell("Account connected", `<p>\u8D26\u53F7\u5DF2\u8FDE\u63A5\u3002\u8BF7\u8FD4\u56DE Cursor \u7EE7\u7EED\uFF1B\u8FDE\u63A5\u672C\u8EAB\u6CA1\u6709\u4E0B\u5355\u6216\u6263\u6B3E\u3002</p><p><a href="/?session=${nonce}">\u67E5\u770B\u8FDE\u63A5\u72B6\u6001</a></p>`));
+        return send(200, shell("Account connected \xB7 \u8D26\u53F7\u5DF2\u8FDE\u63A5", resumeBody(pending?.connection_id) + `<p><a href="/?session=${nonce}">\u67E5\u770B\u8FDE\u63A5\u72B6\u6001</a></p>`));
       }
       if (req.method === "GET" && u.searchParams.get("session") === nonce) {
         res.writeHead(303, { Location: u.pathname + (u.searchParams.has("purchase") ? `?purchase=${encodeURIComponent(u.searchParams.get("purchase"))}&method=${encodeURIComponent(u.searchParams.get("method") ?? "balance")}` : ""), "Set-Cookie": `${cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
@@ -41551,16 +41574,17 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
       }
       if (!cookies.includes(`${cookieName}=${nonce}`)) return send(403, shell("Open from Cursor", "<p>This page has no matching login session. Return to Cursor and ask it to connect your MZ MALL eSIM account, then open the new link it returns.</p>"));
       if (req.method === "GET" && u.pathname === "/") {
-        let connected = "";
+        let connected = "", accountIsValid = false;
         if (store.get("account", "current")) {
           try {
             const a = await service.auth();
+            accountIsValid = true;
             connected = `<p>Connected account: ${escape2(a.email)} \xB7 Balance: ${a.balance} MMK.</p>` + form("/disconnect", "", "Disconnect");
           } catch {
             connected = "<p>Your session expired. Sign in again.</p>";
           }
         }
-        if (websiteConnection) return send(200, shell(connected ? "Account connected" : "Use your MZ MALL website account", connected + '<p>Sign-in and permission confirmation use the existing MZ MALL website. This local service only receives the protected callback.</p><p><a href="/website-login">Connect through the MZ MALL website</a></p>'));
+        if (websiteConnection) return send(200, shell(accountIsValid ? "Account connected \xB7 \u8D26\u53F7\u5DF2\u8FDE\u63A5" : "Use your MZ MALL website account", connected + (accountIsValid ? resumeBody(store.get("account", "current")?.connection_id) : '<p>\u8BF7\u4F7F\u7528\u5DF2\u6709\u7684 MZ MALL \u7F51\u7AD9\u8D26\u53F7\u767B\u5F55\uFF0C\u5E76\u786E\u8BA4\u5141\u8BB8\u8FDE\u63A5\u3002</p><p><a href="/website-login">\u4F7F\u7528\u7F51\u7AD9\u8D26\u53F7\u8FDE\u63A5</a></p>')));
         return send(200, shell("Connect your eSIM account", connected + (loginNotice ? `<p role="status">${escape2(loginNotice)}</p>` : "") + loginForm(loginEmail)));
       }
       if (websiteConnection && req.method === "GET" && u.pathname === "/website-login") {
@@ -41656,29 +41680,46 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
   });
   base = `http://127.0.0.1:${server.address().port}`;
   cookieName = `mz_esim_session_${server.address().port}`;
-  return { server, base, accountUrl: () => websiteConnection ? websiteConnection.begin(base) : `${base}/?session=${nonce}`, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
+  return { server, base, statusUrl: () => `${base}/?session=${nonce}`, accountUrl: (shoppingRequest) => websiteConnection ? websiteConnection.begin(base, shoppingRequest) : `${base}/?session=${nonce}`, connectionStatus: (id) => websiteConnection ? websiteConnection.status(id) : { state: "unknown" }, approvalUrl: (id, method) => `${base}/approve?session=${nonce}&purchase=${encodeURIComponent(id)}&method=${method}` };
 }
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.2.0" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.2.1" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
   const result = (value) => ({ content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value });
-  const tool = (name, config2, callback) => server.registerTool(name, config2, async (args) => {
+  const tool = (name, config2, callback) => server.registerTool(name, config2, async (args, extra) => {
     try {
-      return result(await callback(args));
+      return result(await callback(args, extra));
     } catch (e) {
       return { isError: true, content: [{ type: "text", text: e.message }] };
     }
   });
   tool("search_esim_plans", { description: "Search currently sellable digital eSIM plans by destination, keyword and exact validity. Prices are MMK retail prices. No purchase or login.", inputSchema: { country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), keyword: external_exports.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1) }, annotations: read }, (args) => service.search(args));
   tool("get_esim_plan", { description: "Read a digital eSIM plan, retail price, coverage, data limits and activation instructions. Does not verify device compatibility.", inputSchema: { product_id: positive }, annotations: read }, (args) => service.product(args.product_id));
-  tool("connect_esim_account", { description: "Return a private connection link that reuses the existing MZ MALL website sign-in and asks the customer to allow account connection. Email, verification codes and tokens stay out of chat. Connecting does not create an order or authorize a purchase.", inputSchema: {}, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async () => ({ sign_in_url: await portal.accountUrl() }));
-  tool("get_esim_account", { description: "Read the connected customer account and MMK balance; does not expose login tokens.", inputSchema: {}, annotations: read }, async () => {
+  const shoppingRequest = external_exports.object({ intent: external_exports.enum(["purchase", "browse", "connect_only"]), country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), validity_days: positive.max(730).optional(), product_id: positive.optional(), quantity: positive.max(30).optional(), max_total_mmk: external_exports.number().finite().nonnegative().optional(), data_preference: external_exports.string().max(200).optional() }).strict();
+  tool("connect_esim_account", { description: "Return a private website login link valid for ten minutes. Preserve the customer\u2019s current eSIM selection in shopping_request. Show the link, then call get_esim_account with its connection_id and wait_seconds=30 to resume this conversation after login. Never put OTPs or tokens in chat. Login does not authorize an order or payment.", inputSchema: { shopping_request: shoppingRequest.optional() }, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async (args) => {
+    const signInUrl = await portal.accountUrl(args.shopping_request);
+    const connectionId = new URL(signInUrl).searchParams.get("connection");
+    return { sign_in_url: signInUrl, ...connectionId ? { connection_id: connectionId, expires_in_seconds: 600, next_step: "Show the customer this link, then wait for the same connection with get_esim_account(connection_id, wait_seconds=30). Continue their original request after connection; obtain transaction approval before any payment." } : {} };
+  });
+  tool("get_esim_account", { description: "Read the connected customer account and MMK balance without tokens. With connection_id, check or briefly wait for that exact website login and restore its shopping_request only for the verified account. A successful login is not payment approval.", inputSchema: { connection_id: external_exports.string().regex(/^[a-f0-9]{64}$/).optional(), wait_seconds: external_exports.number().int().min(0).max(30).default(0) }, annotations: read }, async (args, extra) => {
+    let connection;
+    if (args.wait_seconds && !args.connection_id) throw new Error("Use the connection_id returned by connect_esim_account when waiting for login.");
+    if (args.connection_id) {
+      const deadline = Date.now() + args.wait_seconds * 1e3;
+      do {
+        connection = portal.connectionStatus(args.connection_id);
+        if (connection.state !== "awaiting_login" || Date.now() >= deadline) break;
+        await delay(Math.min(500, deadline - Date.now()), void 0, { signal: extra?.signal });
+      } while (true);
+      if (connection.state !== "connected") return { connected: false, state: connection.state, next_step: connection.state === "awaiting_login" ? "The customer is still signing in. Keep the same selection and connection ID. Continue waiting if they are completing login; do not create another login or an order." : "Return to the customer\u2019s original request. A cancelled, expired or unknown connection may need a new sign-in link." };
+    }
     const a = await service.auth();
-    return { account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK" };
+    if (connection && connection.uid !== a.uid) throw new Error("This connection belongs to a different account. Request a new connection for the current customer.");
+    return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK", ...connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: "Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay." } : {} };
   });
   tool("prepare_esim_purchase", { description: "Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.", inputSchema: { product_id: positive, quantity: positive.max(30), email: external_exports.string().email().max(254), max_total_mmk: external_exports.number().positive().finite(), request_id: external_exports.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, (args) => service.prepare(args));
   tool("get_esim_payment_quote", { description: "Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.", inputSchema: { purchase_id: id, payment_method: external_exports.enum(["balance", "card"]) }, annotations: { ...read, readOnlyHint: false } }, (args) => service.quote(args.purchase_id, args.payment_method));
