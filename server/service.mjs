@@ -7,7 +7,17 @@ export class EsimService {
   constructor({ api, store, purchasesEnabled = false, now = () => Date.now() }) { Object.assign(this, { api, store, purchasesEnabled, now }); }
   async search(args) {
     const d = await this.api.call('products', { country_code: args.country_code, kw: args.keyword, category: 'esim', page: args.page ?? 1, sort: 'price_asc', days: args.validity_days });
-    return { products: (d.list ?? []).filter(p => p.category === 'esim').map(productView), page: d.page, pages: d.pages, total: d.total };
+    const products = (d.list ?? []).filter(p => p.category === 'esim').map(productView);
+    const limit = args.limit ?? 3;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new Error('Catalog limit must be between 1 and 20');
+    let selected = products;
+    if (products.length > limit && limit <= 3) {
+      const quota = products.filter(p => p.traffic_kind === 'quota' && p.plan_type === 'total' && /^\d+(?:\.\d+)?\s*(GB|MB|TB)$/i.test(p.data));
+      const unlimited = products.find(p => p.traffic_kind === 'unlimited');
+      const candidates = [quota[0] ?? products[0], quota[Math.floor((quota.length - 1) / 2)], unlimited ?? quota.at(-1), ...products].filter(Boolean);
+      selected = [...new Map(candidates.map(p => [p.product_id, p])).values()];
+    }
+    return { products: selected.slice(0, limit), page: d.page, pages: d.pages, total: d.total, more_on_this_page: products.length > limit };
   }
   async product(id) {
     const d = await this.api.call('product', { id });
@@ -24,6 +34,10 @@ export class EsimService {
   async prepare(args) {
     if (!this.purchasesEnabled) throw new Error('Purchasing is not enabled for this installation. Catalog browsing is available.');
     const a = await this.auth();
+    args = { product_id: args.product_id, quantity: args.quantity ?? 1, email: args.email ?? a.email, max_total_mmk: args.max_total_mmk, request_id: args.request_id };
+    if (!Number.isSafeInteger(args.quantity) || args.quantity < 1 || args.quantity > 30) throw new Error('Invalid eSIM quantity');
+    if (typeof args.email !== 'string' || args.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error('A delivery email is required for this account.');
+    if (!Number.isFinite(args.max_total_mmk) || args.max_total_mmk <= 0) throw new Error('Confirm the selected plan price before creating an order.');
     const key = `${a.uid}:${args.request_id}`, hash = fingerprint(args);
     return this.store.locked(`create:${key}`, async () => {
       let q = this.store.get('purchase', key);
@@ -83,6 +97,13 @@ export class EsimService {
       payment_method: method, total, currency, base_total_mmk: q.total,
       card_amount_is_estimate: method === 'card',
       terms: 'An unlocked eSIM-compatible device is required. Paid eSIM cancellations are not supported by this API; contact merchant support for refund eligibility. Card checkout displays the final amount before authorization.' };
+  }
+  async openCardCheckout(id) {
+    // The merchant's card endpoint creates a hosted Stripe Checkout Session.
+    // It has no saved payment method or automatic confirmation; the customer
+    // authorizes the actual payment at Stripe. Ownership, quote consistency,
+    // purchase gates and interrupted-attempt recovery remain in pay().
+    return this.pay(id, 'card', async () => true);
   }
   async pay(id, method, approve) {
     if (!this.purchasesEnabled) throw new Error('Purchasing is not enabled for this installation.');

@@ -16,7 +16,7 @@ test('MCP discovery, host approval, balance payment and QR delivery work end to 
   client.setRequestHandler(ElicitRequestSchema, async r => { asked++; assert.match(r.params.message, /1000 MMK/); assert.equal(f.state.payCalls, 0); return { action: 'accept', content: { approve: true } }; });
   const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
   t.after(async () => { await client.close(); await server.close(); f.close(); });
-  const list = await client.listTools(); assert.equal(list.tools.length, 10);
+  const list = await client.listTools(); assert.equal(list.tools.length, 11);
   const payment = list.tools.find(t => t.name === 'pay_esim_purchase'); assert.equal(payment.annotations.readOnlyHint, false); assert.equal(payment.annotations.destructiveHint, true);
   assert.equal(JSON.stringify(list.tools).includes('card_number'), false);
   const p = (await client.callTool({ name: 'prepare_esim_purchase', arguments: purchaseArgs })).structuredContent;
@@ -25,6 +25,23 @@ test('MCP discovery, host approval, balance payment and QR delivery work end to 
   f.state.cards = [{ qrcode_content: 'LPA:1$test.smdp.example$non-working-test-code' }];
   const delivery = await client.callTool({ name: 'get_esim_delivery', arguments: { purchase_id: p.purchase_id } });
   assert.equal(delivery.structuredContent.fulfilled, true); assert.equal(delivery.content[1].type, 'image'); assert.equal(delivery.content[1].mimeType, 'image/png');
+});
+
+test('card checkout has no plugin approval hop, does not charge, and reuses its existing link', async t => {
+  const f = fixture(), portal = { accountUrl: () => 'http://127.0.0.1/test', approvalUrl: () => { throw new Error('Card checkout must not request a separate approval page'); } };
+  const server = makeServer({ service: f.service, store: f.store, portal });
+  const client = new Client({ name: 'direct-card-checkout-test', version: '1' }, { capabilities: { elicitation: { form: {} } } });
+  client.setRequestHandler(ElicitRequestSchema, async () => { throw new Error('Card checkout must not request a redundant charge approval'); });
+  const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
+  t.after(async () => { await client.close(); await server.close(); f.close(); });
+  const checkoutTool = (await client.listTools()).tools.find(t => t.name === 'open_esim_card_checkout');
+  assert.equal(checkoutTool.annotations.destructiveHint, false);
+  const p = (await client.callTool({ name: 'prepare_esim_purchase', arguments: purchaseArgs })).structuredContent;
+  const checkout = (await client.callTool({ name: 'open_esim_card_checkout', arguments: { purchase_id: p.purchase_id } })).structuredContent;
+  assert.equal(checkout.paid, false); assert.match(checkout.checkout_url, /^https:\/\/checkout.stripe.com\//);
+  const reused = (await client.callTool({ name: 'pay_esim_purchase', arguments: { purchase_id: p.purchase_id, payment_method: 'card' } })).structuredContent;
+  assert.equal(reused.checkout_url, checkout.checkout_url); assert.equal(f.state.count, 1); assert.equal(f.state.payCalls, 1);
+  assert.equal(f.state.paid, false);
 });
 test('private sign-in portal rejects unknown session, Host and cross-origin POST before any email is sent', async t => {
   const f = fixture(), portal = await startPortal({ api: f.api, store: f.store, service: f.service });

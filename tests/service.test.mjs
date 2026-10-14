@@ -20,6 +20,30 @@ test('same request reuses unpaid order; changing details or budget fails', async
   await assert.rejects(f.service.prepare({ ...purchaseArgs, max_total_mmk: 900, request_id: 'second-request' }), /budget/);
   assert.equal(f.state.count, 1);
 });
+
+test('account defaults reuse the same existing order when explicit details are supplied later', async t => {
+  const f = fixture(); t.after(f.close);
+  const { quantity, email, ...defaults } = purchaseArgs;
+  const first = await f.service.prepare(defaults);
+  assert.equal(first.quantity, 1); assert.equal(first.delivery_email, 'buyer@example.test');
+  const repeated = await f.service.prepare(purchaseArgs);
+  assert.equal(repeated.purchase_id, first.purchase_id); assert.equal(f.state.count, 1);
+  assert.equal(f.state.payCalls, 0);
+});
+
+test('default catalog gives three varied options and an explicit larger limit preserves the full page', async t => {
+  const f = fixture(); t.after(f.close); const original = f.api.call.bind(f.api);
+  const products = Array.from({ length: 6 }, (_, i) => ({ id: 101 + i, product_name: `Test total ${i + 1}GB`, category: 'esim', sell_price: 1000 + i * 1000, data_fmt: `${i + 1} GB`, traffic_kind: 'quota', product_type: 'total', validity_days: 7, cost_price: 15, supplier_secret: 'private-catalog-field' }));
+  products.push({ ...products[0], id: 107, product_name: 'Test daily', product_type: 'daily' });
+  products.push({ ...products[0], id: 108, product_name: 'Test unlimited', data_fmt: 'Unlimited', traffic_kind: 'unlimited' });
+  f.api.call = (action, args, options) => action === 'products' ? Promise.resolve({ list: products, page: 1, pages: 1, total: 8 }) : original(action, args, options);
+  const shortlist = await f.service.search({ country_code: 'TH', validity_days: 7 });
+  assert.deepEqual(shortlist.products.map(p => p.product_id), [101, 103, 108]);
+  assert.equal(shortlist.more_on_this_page, true); assert.equal(shortlist.total, 8);
+  assert.equal(JSON.stringify(shortlist).includes('private-catalog-field'), false);
+  const full = await f.service.search({ country_code: 'TH', validity_days: 7, limit: 20 });
+  assert.equal(full.products.length, 8); assert.equal(full.more_on_this_page, false);
+});
 test('declining approval cannot charge', async t => {
   const f = fixture(); t.after(f.close); const p = await f.service.prepare(purchaseArgs);
   const r = await f.service.pay(p.purchase_id, 'balance', async () => false);

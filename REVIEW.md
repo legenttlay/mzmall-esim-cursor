@@ -1,11 +1,11 @@
-# Review evidence — version 0.2.2
+# Review evidence — version 0.3.0
 
-This is a development pilot, not a marketplace-approved commerce listing. No real order, payment or eSIM issuance was performed during implementation. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; the customer subsequently completed website sign-in and consent. A read-only merchant account check confirmed the saved identity; no real order or payment was made.
+This is a development pilot, not a marketplace-approved commerce listing. Implementation and plugin updates have not created, paid or issued a live eSIM. The customer performed a live unpaid-order/card-checkout pilot; a read-only merchant check found it unpaid. The merchant's existing customer login page was opened through the 0.2.0 connection link in the real in-app browser; the customer subsequently completed website sign-in and consent. A read-only merchant account check confirmed the saved identity; no real order or payment was made.
 
 ## Executed evidence
 
-- `npm test`: **32 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
-- `node scripts/bundle-smoke.mjs`: bundled Node runtime starts through the actual stdio transport, discovers ten tools, queries the real Thailand catalog (20 grouped products on page 1), and rejects creation while purchases are disabled. No credentials, real order or payment are needed.
+- `npm test`: **35 passed**, with synthetic accounts, order IDs and non-working LPA installation strings. Includes MCP tool discovery, explicit host elicitation, payment/fulfillment separation, QR generation, concurrent requests, reused upstream orders, declined approval, price changes, payment timeout/restart recovery, account isolation, closed orders, local portal CSRF/Host checks, credential filtering and the purchase-disable switch.
+- `node scripts/bundle-smoke.mjs`: bundled Node runtime starts through the actual stdio transport, discovers eleven tools, queries the real Thailand catalog (at most three displayed plans from page 1), and rejects creation while purchases are disabled. No credentials, real order or payment are needed.
 - `npm run smoke:catalog`: real public catalog and product-detail reads. On 2026-10-13 the catalog contained 129 grouped Thailand results; a returned product was ID 2177, retail 2340 MMK. These are a dated observation, not a fixed test expectation or a current advertised price.
 - Dependency install audit: zero reported vulnerabilities at installation. Node SQLite is experimental in the tested Node 24 runtime.
 
@@ -63,3 +63,9 @@ The connected callback and account-status page provide a prominent Return to Cur
 ## 0.2.2 compact success dialog
 
 Callback success and the connected landing page show a responsive, keyboard-accessible success dialog with one return action and a manual fallback. Account details and disconnect controls live at the separate cookie-protected `/account` page. Existing callback tests verify that the dialog omits email, balance, disconnect forms and tokens, while the management page retains its session guard and disconnect form. The same 32 tests remain. Native host-managed remote OAuth is still a future production integration; changing the dialog does not implement it.
+
+## 0.3.0 shorter shopping flow
+
+Three-plan catalog defaults preserve full-page access through limit=20. The agent uses one eSIM and the verified email unless the customer requests otherwise; accepted quoted amounts remain strict limits. Card checkout has its own non-destructive tool, with final payment consent at Stripe; balance retains host/private transaction approval. Tests verify normalized defaults reuse an existing order, the full catalog remains available, card checkout invokes no extra plugin approval, creates no charge and reuses its link. Existing paid/unknown outcome and account-isolation tests still pass. A customer-created unpaid order and hosted card checkout exist in the live pilot; no live order or payment was created during this update. The APP frontend and backend remain unchanged.
+
+The 0.3.0 installed bundle was verified through stdio with the connected account and the three-plan live catalog. Its pre-existing checkout was recovered under an API wrapper that rejects every write request. Record count, encrypted record fingerprint and vault-key fingerprint were identical before and after the local update; the existing order and checkout URL were preserved. No production APP/backend files were deployed.

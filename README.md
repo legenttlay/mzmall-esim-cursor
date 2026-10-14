@@ -13,7 +13,7 @@ npm run build
 npm run smoke:catalog
 ```
 
-Copy the built `artifacts/public-repository` folder to `~/.cursor/plugins/local/mzmall-esim`, reload Cursor, and check the ten eSIM tools in Customize. Local plugin imports must be enabled by the host/team. The packaged runtime in `dist/index.mjs` includes npm dependencies; no install script runs for customers. Node 24 must be available on PATH.
+Copy the built `artifacts/public-repository` folder to `~/.cursor/plugins/local/mzmall-esim`, reload Cursor, and check the eleven eSIM tools in Customize. Local plugin imports must be enabled by the host/team. The packaged runtime in `dist/index.mjs` includes npm dependencies; no install script runs for customers. Node 24 must be available on PATH.
 
 Purchases default to disabled (`MZMALL_ENABLE_PURCHASES=0`). For an explicitly authorized pilot, change this to `1` in the local plugin's `mcp.json`, reload Cursor, connect **your own** account, and approve each purchase. Enabling purchase support does not approve any particular transaction.
 
@@ -29,7 +29,7 @@ Try:
 
 Customers can start by asking for an eSIM. The agent selects a suitable plan before login, preserves the selection with the website connection, and briefly waits for that exact connection using `get_esim_account(connection_id, wait_seconds=30)`. When it completes, the same conversation can continue with price confirmation. A manual **Return to Cursor** button uses Cursor's documented prompt deeplink and can restore the saved draft in another chat. The customer reviews and sends that prompt; it cannot automatically send a chat message, guarantee the original chat opens, or authorize a payment. No account tokens, OTPs or delivery email enter the deeplink. Saved selections are available for 24 hours only to the verified connected account.
 
-Balance payments can finish in the agent conversation after explicit host elicitation, or a private browser approval if the host lacks elicitation. Card payments require Stripe's secure checkout and any bank authentication; the connector resumes with payment verification and QR delivery. **Inline card payment in Cursor chat has not been implemented or verified.** Card quotes include a CNY estimate; Stripe checkout displays the final amount before customer authorization. No card details enter a tool argument.
+Balance payments retain exact-transaction host elicitation or a private approval page. `open_esim_card_checkout` creates or reuses a Stripe checkout directly after the customer chooses cards; the customer approves the actual charge in Stripe and completes any bank authentication. This removes a redundant plugin approval page, while owner checks, payment journals and unknown-outcome recovery remain. The legacy card argument to `pay_esim_purchase` uses the same checkout-only path. The connector verifies merchant payment status before QR delivery. **Inline card payment in Cursor chat has not been implemented or verified.** Card quotes include a CNY estimate; Stripe checkout displays the final amount before customer authorization. No card details enter a tool argument.
 
 Only the merchant-confirmed `is_pay` result counts as paid. QR delivery requires paid status and valid installation codes for every ordered card. Payment, fulfillment, installation and network activation are separate states. Never automatically retry an unknown payment outcome. The journal persists attempts across process restarts.
 
@@ -50,3 +50,5 @@ The confirmed source publisher is `legenttlay`, and the dedicated repository is 
 Official references: [Cursor plugins](https://cursor.com/docs/reference/plugins), [Cursor MCP](https://cursor.com/docs/mcp), [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x).
 
 The 0.2.2 success screen is a compact modal with one Return to Cursor button and a manual fallback. Email, balance and disconnect controls are on a separate private account-management page, linked by `get_esim_account`. The underlying callback, saved selection and transaction approvals are unchanged.
+
+Version 0.3.0 defaults to a three-plan shortlist and short replies. Quantity defaults to one, and delivery defaults to the verified account email. The selected quoted price the customer accepts remains an enforced MMK limit; it is not silently increased. Existing transaction journals, order IDs, purchase IDs and checkout URLs require no migration. No APP/backend release is part of this change.

@@ -10,7 +10,7 @@ const client = new Client({ name: 'bundle-review', version: '1' });
 try {
   await client.connect(transport);
   const tools = await client.listTools();
-  if (tools.tools.length !== 10) throw new Error('Unexpected tool inventory');
+  if (tools.tools.length !== 11) throw new Error('Unexpected tool inventory');
   const r = await client.callTool({ name: 'search_esim_plans', arguments: { country_code: 'TH', page: 1 } });
   if (r.isError || !(r.structuredContent?.products?.length > 0)) throw new Error('Bundled live catalog query failed');
   const disabled = await client.callTool({ name: 'prepare_esim_purchase', arguments: { product_id: 2177, quantity: 1, email: 'not-sent@example.test', max_total_mmk: 2340, request_id: 'disabled-smoke-0001' } });

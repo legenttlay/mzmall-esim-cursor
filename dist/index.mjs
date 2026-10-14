@@ -41285,7 +41285,17 @@ var EsimService = class {
   }
   async search(args) {
     const d = await this.api.call("products", { country_code: args.country_code, kw: args.keyword, category: "esim", page: args.page ?? 1, sort: "price_asc", days: args.validity_days });
-    return { products: (d.list ?? []).filter((p) => p.category === "esim").map(productView), page: d.page, pages: d.pages, total: d.total };
+    const products = (d.list ?? []).filter((p) => p.category === "esim").map(productView);
+    const limit = args.limit ?? 3;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new Error("Catalog limit must be between 1 and 20");
+    let selected = products;
+    if (products.length > limit && limit <= 3) {
+      const quota = products.filter((p) => p.traffic_kind === "quota" && p.plan_type === "total" && /^\d+(?:\.\d+)?\s*(GB|MB|TB)$/i.test(p.data));
+      const unlimited = products.find((p) => p.traffic_kind === "unlimited");
+      const candidates = [quota[0] ?? products[0], quota[Math.floor((quota.length - 1) / 2)], unlimited ?? quota.at(-1), ...products].filter(Boolean);
+      selected = [...new Map(candidates.map((p) => [p.product_id, p])).values()];
+    }
+    return { products: selected.slice(0, limit), page: d.page, pages: d.pages, total: d.total, more_on_this_page: products.length > limit };
   }
   async product(id) {
     const d = await this.api.call("product", { id });
@@ -41302,6 +41312,10 @@ var EsimService = class {
   async prepare(args) {
     if (!this.purchasesEnabled) throw new Error("Purchasing is not enabled for this installation. Catalog browsing is available.");
     const a = await this.auth();
+    args = { product_id: args.product_id, quantity: args.quantity ?? 1, email: args.email ?? a.email, max_total_mmk: args.max_total_mmk, request_id: args.request_id };
+    if (!Number.isSafeInteger(args.quantity) || args.quantity < 1 || args.quantity > 30) throw new Error("Invalid eSIM quantity");
+    if (typeof args.email !== "string" || args.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error("A delivery email is required for this account.");
+    if (!Number.isFinite(args.max_total_mmk) || args.max_total_mmk <= 0) throw new Error("Confirm the selected plan price before creating an order.");
     const key = `${a.uid}:${args.request_id}`, hash2 = fingerprint(args);
     return this.store.locked(`create:${key}`, async () => {
       let q = this.store.get("purchase", key);
@@ -41398,6 +41412,9 @@ var EsimService = class {
       card_amount_is_estimate: method === "card",
       terms: "An unlocked eSIM-compatible device is required. Paid eSIM cancellations are not supported by this API; contact merchant support for refund eligibility. Card checkout displays the final amount before authorization."
     };
+  }
+  async openCardCheckout(id) {
+    return this.pay(id, "card", async () => true);
   }
   async pay(id, method, approve) {
     if (!this.purchasesEnabled) throw new Error("Purchasing is not enabled for this installation.");
@@ -41718,7 +41735,7 @@ async function startPortal({ api, store, service, port = 0, websiteLogin = false
 
 // server/main.mjs
 function makeServer({ service, portal, store }) {
-  const server = new McpServer({ name: "mzmall-esim", version: "0.2.2" });
+  const server = new McpServer({ name: "mzmall-esim", version: "0.3.0" });
   const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
   const write = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
   const id = external_exports.string().uuid(), positive = external_exports.number().int().positive();
@@ -41730,7 +41747,7 @@ function makeServer({ service, portal, store }) {
       return { isError: true, content: [{ type: "text", text: e.message }] };
     }
   });
-  tool("search_esim_plans", { description: "Search currently sellable digital eSIM plans by destination, keyword and exact validity. Prices are MMK retail prices. No purchase or login.", inputSchema: { country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), keyword: external_exports.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1) }, annotations: read }, (args) => service.search(args));
+  tool("search_esim_plans", { description: "Return a short selection of currently sellable eSIMs by destination and validity. Default is at most three options; present a compact comparison without internal IDs or a full catalog. Use limit=20 only when the customer requests more or all plans. Prices are MMK. No purchase or login.", inputSchema: { country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), keyword: external_exports.string().max(100).optional(), validity_days: positive.optional(), page: positive.max(100).default(1), limit: positive.max(20).default(3) }, annotations: read }, (args) => service.search(args));
   tool("get_esim_plan", { description: "Read a digital eSIM plan, retail price, coverage, data limits and activation instructions. Does not verify device compatibility.", inputSchema: { product_id: positive }, annotations: read }, (args) => service.product(args.product_id));
   const shoppingRequest = external_exports.object({ intent: external_exports.enum(["purchase", "browse", "connect_only"]), country_code: external_exports.string().regex(/^[A-Z]{2}$/).optional(), validity_days: positive.max(730).optional(), product_id: positive.optional(), quantity: positive.max(30).optional(), max_total_mmk: external_exports.number().finite().nonnegative().optional(), data_preference: external_exports.string().max(200).optional() }).strict();
   tool("connect_esim_account", { description: "Return a private website login link valid for ten minutes. Preserve the customer\u2019s current eSIM selection in shopping_request. Show the link, then call get_esim_account with its connection_id and wait_seconds=30 to resume this conversation after login. Never put OTPs or tokens in chat. Login does not authorize an order or payment.", inputSchema: { shopping_request: shoppingRequest.optional() }, annotations: { ...read, readOnlyHint: false, idempotentHint: false } }, async (args) => {
@@ -41754,9 +41771,11 @@ function makeServer({ service, portal, store }) {
     if (connection && connection.uid !== a.uid) throw new Error("This connection belongs to a different account. Request a new connection for the current customer.");
     return { connected: true, account_id: a.uid, email: a.email, balance: a.balance, currency: "MMK", ...portal.managementUrl ? { account_management_url: portal.managementUrl() } : {}, ...connection?.shopping_request ? { shopping_request: connection.shopping_request, next_step: "Resume this saved request. Re-read the selected plan and confirm current price and delivery details. Connecting is not consent to create an order or pay." } : {} };
   });
-  tool("prepare_esim_purchase", { description: "Create or reuse an unpaid digital eSIM order. Use only when the customer wants to buy the specified plan, quantity and delivery email within the stated MMK budget. Does not charge or issue eSIMs. Reuse the same request_id after interruption.", inputSchema: { product_id: positive, quantity: positive.max(30), email: external_exports.string().email().max(254), max_total_mmk: external_exports.number().positive().finite(), request_id: external_exports.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, (args) => service.prepare(args));
+  tool("prepare_esim_purchase", { description: "Create or reuse the customer-requested unpaid eSIM order. Default quantity is one and default delivery is the verified account email, so do not ask again for known details. Set max_total_mmk to the quoted total the customer accepted; do not request a separate maximum budget after they agree to that price. An earlier do-not-order request still applies until explicitly changed. Does not charge or issue eSIMs. Reuse the same request_id after interruption.", inputSchema: { product_id: positive, quantity: positive.max(30).default(1), email: external_exports.string().email().max(254).optional(), max_total_mmk: external_exports.number().positive().finite(), request_id: external_exports.string().min(8).max(80).regex(/^[A-Za-z0-9_.:-]+$/) }, annotations: write }, (args) => service.prepare(args));
   tool("get_esim_payment_quote", { description: "Read the exact balance-payment total or a card-checkout estimate including fees and currency conversion. The upstream order read may reconcile an existing payment. Card checkout displays the final amount. Does not start a payment.", inputSchema: { purchase_id: id, payment_method: external_exports.enum(["balance", "card"]) }, annotations: { ...read, readOnlyHint: false } }, (args) => service.quote(args.purchase_id, args.payment_method));
-  tool("pay_esim_purchase", { description: "SENSITIVE PURCHASE: pay the customer-approved eSIM order from their balance, or open secure card checkout. Requires fresh approval of the complete details. A checkout link does not prove payment. Unknown outcomes must be checked and never retried blindly. Never ask for card numbers or bank credentials in chat.", inputSchema: { purchase_id: id, payment_method: external_exports.enum(["balance", "card"]) }, annotations: write }, async (args) => {
+  tool("open_esim_card_checkout", { description: "Create or reuse secure Stripe card checkout for the existing customer-requested eSIM order. Use after the customer chooses card payment. This only opens checkout; the customer confirms the final amount and payment at Stripe. No separate plugin approval page is needed. A link is not payment confirmation. Never ask for card details in chat or recreate an order after an unknown attempt.", inputSchema: { purchase_id: id }, annotations: { ...read, readOnlyHint: false } }, (args) => service.openCardCheckout(args.purchase_id));
+  tool("pay_esim_purchase", { description: "SENSITIVE BALANCE PAYMENT: pay the specific eSIM order only after the host or private page obtains fresh approval of its details. Avoid an extra chat confirmation before this final approval. For card payment prefer open_esim_card_checkout; the legacy card argument only opens the same secure checkout. Unknown results must be checked, never retried blindly.", inputSchema: { purchase_id: id, payment_method: external_exports.enum(["balance", "card"]) }, annotations: write }, async (args) => {
+    if (args.payment_method === "card") return service.openCardCheckout(args.purchase_id);
     let approvalUrl;
     const value = await service.pay(args.purchase_id, args.payment_method, async (quote) => {
       const approval = store.get("approval", args.purchase_id), a = await service.auth();
@@ -41766,7 +41785,7 @@ function makeServer({ service, portal, store }) {
       }
       const caps = server.server.getClientCapabilities();
       if (caps?.elicitation && ("form" in caps.elicitation || Object.keys(caps.elicitation).length === 0)) {
-        const answer = await server.server.elicitInput({ mode: "form", message: `Approve MZ MALL eSIM purchase: ${quote.product} \xD7 ${quote.quantity}, ${quote.total} ${quote.currency}, payment: ${quote.payment_method}, delivery: ${quote.delivery_email}. ${quote.terms}`, requestedSchema: { type: "object", properties: { approve: { type: "boolean", title: "Approve this specific purchase", default: false } }, required: ["approve"] } });
+        const answer = await server.server.elicitInput({ mode: "form", message: `MZ MALL eSIM\uFF1A${quote.product} \xD7 ${quote.quantity}\uFF0C${quote.total} ${quote.currency}\uFF1B\u4F59\u989D\u4ED8\u6B3E\uFF0C\u53D1\u9001\u81F3 ${quote.delivery_email}\u3002\u9700\u652F\u6301 eSIM \u7684\u89E3\u9501\u8BBE\u5907\uFF1B\u9000\u6B3E\u8BF7\u8054\u7CFB\u5BA2\u670D\u786E\u8BA4\u3002`, requestedSchema: { type: "object", properties: { approve: { type: "boolean", title: "\u786E\u8BA4\u8FD9\u7B14\u4F59\u989D\u4ED8\u6B3E", default: false } }, required: ["approve"] } });
         return answer.action === "accept" && answer.content?.approve === true;
       }
       approvalUrl = portal.approvalUrl(args.purchase_id, args.payment_method);

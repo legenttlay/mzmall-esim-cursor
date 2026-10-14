@@ -17,7 +17,7 @@ test('multiple first-run MCP instances share one complete vault key and all init
     try { await client.connect(transport); return (await client.listTools()).tools.length; }
     finally { await client.close(); }
   }));
-  assert.deepEqual(results, Array(12).fill(10));
+  assert.deepEqual(results, Array(12).fill(11));
   assert.equal(readFileSync(join(data, 'vault.key')).length, 32);
   const existingKey = readFileSync(join(data, 'vault.key'));
   const a = new Store(data); a.put('test', 'shared-record', { value: 'synthetic-only' });
